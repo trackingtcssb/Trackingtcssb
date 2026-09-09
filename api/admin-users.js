@@ -13,9 +13,26 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-});
+// Built lazily (inside the handler's try/catch) rather than at module load time.
+// Constructing this at module scope meant a missing/misconfigured env var threw
+// synchronously during Vercel's cold start, before any request-handling code ran
+// at all - the caller got Vercel's generic crash page (not JSON) instead of a
+// useful error message, and every request to this function failed with a bare 500.
+let supabaseAdmin = null;
+const getSupabaseAdmin = () => {
+    if (supabaseAdmin) return supabaseAdmin;
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        throw new Error(
+            'Server is missing SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY. ' +
+            'Add both in Vercel -> Project Settings -> Environment Variables, then redeploy ' +
+            '(saving env vars does not update an already-running deployment).'
+        );
+    }
+    supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { autoRefreshToken: false, persistSession: false },
+    });
+    return supabaseAdmin;
+};
 
 export default async function handler(req, res) {
     const allowedOrigin = process.env.ALLOWED_ORIGIN || '*';
@@ -27,6 +44,8 @@ export default async function handler(req, res) {
     if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
     try {
+        const supabaseAdmin = getSupabaseAdmin();
+
         // 1. Verify the caller is a real, currently-logged-in user.
         const token = (req.headers.authorization || '').replace('Bearer ', '');
         if (!token) { res.status(401).json({ error: 'Missing auth token' }); return; }
@@ -82,6 +101,9 @@ export default async function handler(req, res) {
         res.status(400).json({ error: 'Unknown action' });
     } catch (err) {
         console.error('admin-users error:', err);
-        res.status(500).json({ error: 'Internal server error' });
+        // This endpoint is only reachable by a verified superadmin (or fails the
+        // config check before that, in which case the message is just a setup
+        // hint with no secret values in it) — safe to surface err.message here.
+        res.status(500).json({ error: err.message || 'Internal server error' });
     }
 }
