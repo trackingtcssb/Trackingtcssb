@@ -1,0 +1,11 @@
+{
+  "name": "turbo-control-solutions-website",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Turbo Control Solutions - Enterprise Service Management. Static frontend (index.html) plus a Vercel serverless function (api/) that proxies Claude API calls so the API key never reaches the browser.",
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest",
+    "zod": "latest"
+  }
+}

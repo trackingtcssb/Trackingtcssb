@@ -65,6 +65,12 @@
 
         const GOOGLE_SHEET_API = "https://script.google.com/macros/s/AKfycbyC8x_A-FHxszNxo0obKdNVCSE_e9MM2eFsxWaH2PWDAXHnAsPcxISIdnObtCuN_lAr/exec";
 
+        // Relative path only works when this page and /api/polish-report are deployed
+        // together on the same origin (e.g. this whole repo hosted on Vercel). If the
+        // frontend stays on GitHub Pages while the function lives on Vercel, replace
+        // this with the function's full URL, e.g. "https://your-app.vercel.app/api/polish-report".
+        const POLISH_REPORT_ENDPOINT = "/api/polish-report";
+
         // Unique identity for THIS browser tab (survives re-renders, distinct per tab).
         // Used for the multi-tab "who is editing this job" lock/take-over feature.
         let TAB_ID = null;
@@ -239,6 +245,24 @@
                 if (restrictions[key] && typeof merged[key] === 'boolean') merged[key] = false;
             });
             return merged;
+        };
+
+        // Sends internal report text to the /api/polish-report serverless function, which
+        // holds the Claude API key server-side and returns customer-facing rewrites of the
+        // same fields. Throws on failure — callers decide whether to fall back to a raw copy.
+        const polishReportFields = async (context, fields) => {
+            const res = await fetch(POLISH_REPORT_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ context, fields }),
+            });
+            if (!res.ok) {
+                let message = `Request failed (${res.status})`;
+                try { const body = await res.json(); if (body && body.error) message = body.error; } catch (e) {}
+                throw new Error(message);
+            }
+            const data = await res.json();
+            return data.fields || {};
         };
 
         const INITIAL_USERS = [
@@ -1235,6 +1259,8 @@
                 const [showPartRequestModal, setShowPartRequestModal] = useState(false);
                 const [reportMode, setReportMode] = useState('internal');
                 const [quoteMode, setQuoteMode] = useState('internal');
+                const [polishingCustomer, setPolishingCustomer] = useState(false);
+                const [polishingQuote, setPolishingQuote] = useState(false);
                 const [editData, setEditData] = useState({ ...selectedRepair });
                 const [diag, setDiag] = useState({
                     visualInspection: selectedRepair.diagnosticReport?.visualInspection || '',
@@ -1386,23 +1412,47 @@
                     alert("Diagnostic report updated successfully.");
                 };
 
-                const handleSyncToCustomer = () => {
-                    if(!window.confirm("Copy all internal diagnostic details, photos, and parts to the customer report? You can edit them afterwards.")) return;
-                    setCustRep({
-                        visualInspection: diag.visualInspection,
-                        initialFindings: diag.initialFindings,
-                        correctiveAction: diag.correctiveAction,
-                        testResults: diag.testResults,
-                        photos: [...(diag.photos || [])],
-                        partsUsed: (selectedRepair.partsUsed || []).map(p => ({ id: p.id, name: p.name, qty: p.qty }))
-                    });
-                    alert("Internal data successfully synchronized to customer report view!");
+                const handleSyncToCustomer = async () => {
+                    if(!window.confirm("Use AI to rewrite the internal diagnostic details into polished customer-facing language (photos and parts are copied as-is)? You can edit the result afterwards.")) return;
+                    const rawFields = { visualInspection: diag.visualInspection, initialFindings: diag.initialFindings, correctiveAction: diag.correctiveAction, testResults: diag.testResults };
+                    const carryOver = { photos: [...(diag.photos || [])], partsUsed: (selectedRepair.partsUsed || []).map(p => ({ id: p.id, name: p.name, qty: p.qty })) };
+                    setPolishingCustomer(true);
+                    try {
+                        const polished = await polishReportFields(
+                            { itemName: selectedRepair.itemName, brand: selectedRepair.brand, model: selectedRepair.model, faultDescription: selectedRepair.faultDescription, warrantyType: selectedRepair.warrantyType },
+                            rawFields
+                        );
+                        setCustRep({ ...rawFields, ...polished, ...carryOver });
+                        alert("Internal report polished into customer-facing language. Review before saving.");
+                    } catch (err) {
+                        console.error('AI polish failed:', err);
+                        if (window.confirm(`AI rewrite failed (${err.message}). Copy the raw internal text instead? You can edit it manually.`)) {
+                            setCustRep({ ...rawFields, ...carryOver });
+                        }
+                    } finally {
+                        setPolishingCustomer(false);
+                    }
                 };
 
-                const handleSyncQuoteToCustomer = () => {
-                    if(!window.confirm("Copy internal diagnostic findings to the customer-facing quotation report?")) return;
-                    setQuoteCustomer({ ...quoteInternal });
-                    alert("Internal diagnostic data synchronized to customer quotation view!");
+                const handleSyncQuoteToCustomer = async () => {
+                    if(!window.confirm("Use AI to rewrite the internal diagnostic findings into polished customer-facing language for the quotation? You can edit the result afterwards.")) return;
+                    const rawFields = { visualInspection: quoteInternal.visualInspection, probableCause: quoteInternal.probableCause, recommendedAction: quoteInternal.recommendedAction, notes: quoteInternal.notes };
+                    setPolishingQuote(true);
+                    try {
+                        const polished = await polishReportFields(
+                            { itemName: selectedRepair.itemName, brand: selectedRepair.brand, model: selectedRepair.model, faultDescription: selectedRepair.faultDescription, warrantyType: selectedRepair.warrantyType },
+                            rawFields
+                        );
+                        setQuoteCustomer({ ...quoteInternal, ...rawFields, ...polished });
+                        alert("Internal diagnostic polished into customer-facing quotation language. Review before saving.");
+                    } catch (err) {
+                        console.error('AI polish failed:', err);
+                        if (window.confirm(`AI rewrite failed (${err.message}). Copy the raw internal text instead? You can edit it manually.`)) {
+                            setQuoteCustomer({ ...quoteInternal });
+                        }
+                    } finally {
+                        setPolishingQuote(false);
+                    }
                 };
 
                 const handleSaveAdmin = (e) => {
@@ -2168,8 +2218,8 @@
                                     </div>
                                     <div className="flex gap-3">
                                         {quoteMode === 'customer' && (
-                                            <button onClick={handleSyncQuoteToCustomer} className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded text-xs font-bold transition shadow-sm flex items-center">
-                                                <i className="fa-solid fa-arrows-rotate mr-1.5"></i> Sync from Internal
+                                            <button disabled={polishingQuote} onClick={handleSyncQuoteToCustomer} className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded text-xs font-bold transition shadow-sm flex items-center disabled:opacity-60 disabled:cursor-wait">
+                                                <i className={`fa-solid ${polishingQuote ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'} mr-1.5`}></i> {polishingQuote ? 'Polishing…' : 'AI-Polish from Internal'}
                                             </button>
                                         )}
                                         <button onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded text-sm font-bold transition shadow-sm flex items-center">
@@ -2319,8 +2369,8 @@
 
                                     <div className="flex gap-3">
                                         {reportMode === 'customer' && (
-                                            <button onClick={handleSyncToCustomer} className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded text-xs font-bold transition shadow-sm flex items-center">
-                                                <i className="fa-solid fa-arrows-rotate mr-1.5"></i> Sync from Internal Report
+                                            <button disabled={polishingCustomer} onClick={handleSyncToCustomer} className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded text-xs font-bold transition shadow-sm flex items-center disabled:opacity-60 disabled:cursor-wait">
+                                                <i className={`fa-solid ${polishingCustomer ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'} mr-1.5`}></i> {polishingCustomer ? 'Polishing…' : 'AI-Polish from Internal'}
                                             </button>
                                         )}
                                         <button onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded text-sm font-bold transition shadow-sm flex items-center">
@@ -2484,7 +2534,7 @@
                                             </div>
 
                                             {(!custRep.partsUsed || custRep.partsUsed.length === 0) ? (
-                                                <p className="text-xs text-slate-400 italic bg-slate-50 p-3 rounded">No parts listed for customer export yet. Click "Sync from Internal Report" above or click "Add Component".</p>
+                                                <p className="text-xs text-slate-400 italic bg-slate-50 p-3 rounded">No parts listed for customer export yet. Click "AI-Polish from Internal" above or click "Add Component".</p>
                                             ) : (
                                                 <div className="border border-slate-300 rounded-lg overflow-hidden">
                                                     <table className="w-full text-left text-xs">
@@ -2547,7 +2597,7 @@
                                                 )}
                                             </div>
                                             {(!custRep.photos || custRep.photos.length === 0) ? (
-                                                <p className="text-xs text-slate-400 italic bg-slate-50 p-3 rounded">No photos added for customer report yet. Click "Sync from Internal Report" or upload from device.</p>
+                                                <p className="text-xs text-slate-400 italic bg-slate-50 p-3 rounded">No photos added for customer report yet. Click "AI-Polish from Internal" or upload from device.</p>
                                             ) : (
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
                                                     {custRep.photos.map((photo, idx) => (
