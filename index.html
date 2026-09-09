@@ -8,6 +8,7 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
@@ -70,6 +71,17 @@
         // frontend stays on GitHub Pages while the function lives on Vercel, replace
         // this with the function's full URL, e.g. "https://your-app.vercel.app/api/polish-report".
         const POLISH_REPORT_ENDPOINT = "/api/polish-report";
+        const ADMIN_USERS_ENDPOINT = "/api/admin-users";
+
+        // Supabase holds real login accounts (Supabase Auth) plus the `repairs` and
+        // `customers` tables — the only two pieces of app data that didn't already have a
+        // backend (inventory/transactions/part requests persist via GOOGLE_SHEET_API above).
+        // The anon key below is meant to be public — it identifies the project, it does not
+        // grant access on its own. Row Level Security policies (see supabase/schema.sql) are
+        // what actually protect the data.
+        const SUPABASE_URL = "https://lhybjazaejclbcdubusg.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoeWJqYXphZWpjbGJjZHVidXNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5NjM3MDMsImV4cCI6MjEwNDUzOTcwM30.DzJ27JbYzAE9EFacA2xYqEBEzQ9asqRyItPpk6FEGnA";
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         // Unique identity for THIS browser tab (survives re-renders, distinct per tab).
         // Used for the multi-tab "who is editing this job" lock/take-over feature.
@@ -85,118 +97,12 @@
         const LOCK_TTL_MS = 5 * 60 * 1000; // a lock with no heartbeat for 5 min is considered abandoned
         const LOCK_HEARTBEAT_MS = 20 * 1000;
 
-        const PRESET_CUSTOMERS = [
-            { id: 'CUST-01', company: 'Petronas Penapisan', name: 'Ahmad Zaki', phone: '+6019-8765432', email: 'zaki@petronas.com', street: 'Kompleks Penapisan Pengerang', postcode: '81600', city: 'Pengerang', state: 'Johor', country: 'Malaysia' },
-            { id: 'CUST-02', company: 'ExxonMobil', name: 'Sarah Connor', phone: '+6012-3456789', email: 'sarah@exxon.com', street: 'Level 17, Menara ExxonMobil', postcode: '50088', city: 'Kuala Lumpur', state: 'WP', country: 'Malaysia' }
-        ];
-
         const POPULAR_BRANDS = ['Woodward', 'Siemens', 'Allen-Bradley', 'Yokogawa', 'Emerson', 'Bently Nevada', 'GE Fanuc', 'Schneider Electric', 'Honeywell', 'ABB'];
         const COUNTRY_CODES = { "Malaysia": "MY", "Singapore": "SG", "Indonesia": "ID", "United States": "US", "United Kingdom": "GB", "United Arab Emirates": "AE" };
         const SORTED_COUNTRY_LIST = Object.keys(COUNTRY_CODES).sort();
         const NORMALIZED_COUNTRY_CODES = Object.keys(COUNTRY_CODES).reduce((acc, key) => { acc[key.toLowerCase()] = COUNTRY_CODES[key]; return acc; }, {});
 
         const EMPTY_DIAG_SIDE = { visualInspection: '', probableCause: '', recommendedAction: '', notes: '', photos: [] };
-
-        const INITIAL_REPAIRS = [
-            {
-                id: 'TCS_MY_260826_101', dateReceived: '2026-08-26', warrantyType: '', department: 'Electronic',
-                customerCompany: 'Petronas Penapisan', customerName: 'Ahmad Zaki', customerPhone: '+6019-8765432', customerEmail: 'zaki@petronas.com',
-                customerStreet: 'Kompleks Penapisan Pengerang', customerPostcode: '81600', customerCity: 'Pengerang', customerState: 'Johor', customerCountry: 'Malaysia', customerPo: 'PO-99218',
-                itemName: 'Woodward MicroNet Controller', brand: 'Woodward', model: '5466-1035', serial: 'WD-882199',
-                faultDescription: 'CPU halt error during startup sequence. Profibus communication lost.',
-                status: 'QC', deliveryNotes: '',
-                assignedEngineer: 'Muhammad Haziq Fikri Bin Hamdan', promisedDate: '2026-09-02',
-                qcChecklist: { visualConfirmed: false, functionalConfirmed: false, calibrationConfirmed: false, documentationConfirmed: false, packagingConfirmed: false, result: '', notes: '', inspectorName: '', inspectorRole: '', timestamp: '' },
-                deliveryInfo: { courier: '', trackingNumber: '', shippedDate: '', packedBy: '' },
-                photos: [
-                    { url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600', caption: 'Initial unit intake inspection' }
-                ],
-                documents: [
-                    { name: 'MicroNet_Hardware_Manual.pdf', size: '2.4 MB' }
-                ],
-                partsUsed: [
-                    { id: 'PART-VR1', name: 'Voltage Regulator VR1', qty: 1, installedBy: 'Muhammad Haziq Fikri Bin Hamdan' },
-                    { id: 'PART-CAP', name: 'Filter Capacitor C12-C15', qty: 4, installedBy: 'Muhammad Haziq Fikri Bin Hamdan' }
-                ],
-                statusHistory: [
-                    { status: 'Draft', timestamp: '2026-08-26T09:12:00', by: 'admin', byName: 'Admin User', type: 'status' },
-                    { status: 'Diagnostic', timestamp: '2026-08-26T11:40:00', by: 'engineer', byName: 'Muhammad Haziq Fikri Bin Hamdan', type: 'status' },
-                    { status: 'Proceed Repair', timestamp: '2026-08-27T08:00:00', by: 'admin', byName: 'Admin User', type: 'status' },
-                    { status: 'Repairing', timestamp: '2026-08-27T09:30:00', by: 'engineer', byName: 'Muhammad Haziq Fikri Bin Hamdan', type: 'status' },
-                    { status: 'Repair Completed', timestamp: '2026-08-28T15:00:00', by: 'engineer', byName: 'Muhammad Haziq Fikri Bin Hamdan', type: 'status' },
-                    { status: 'QC', timestamp: '2026-08-28T16:00:00', by: 'engineer', byName: 'Muhammad Haziq Fikri Bin Hamdan', type: 'status' }
-                ],
-                // Pre-repair diagnostic / quotation report - shared with customer to discuss quotation BEFORE repair proceeds
-                preRepairDiagnostic: {
-                    internal: {
-                        visualInspection: 'Conformal coating degraded near power phases. No mechanical damage to aluminum chassis.',
-                        probableCause: 'Main voltage regulator output dropping to 3.1V under load, triggering internal watchdog timeout and CPU panic.',
-                        recommendedAction: 'Replace failed linear voltage regulator (VR1) and leaking filter capacitor bank (C12-C15). Full conformal coating restoration recommended.',
-                        notes: 'Unit is economically repairable. Awaiting customer PO to proceed.',
-                        photos: []
-                    },
-                    customer: {
-                        visualInspection: 'Coating wear identified near power stage. Chassis structurally sound.',
-                        probableCause: 'Power regulation instability under load causing controller resets.',
-                        recommendedAction: 'Replace power regulation components and restore protective coating.',
-                        notes: 'Repair is recommended and economically viable.',
-                        photos: []
-                    }
-                },
-                diagnosticReport: {
-                    visualInspection: 'Conformal coating degraded near power phases. No mechanical damage to aluminum chassis.',
-                    initialFindings: 'Main voltage regulator output dropping to 3.1V under load, triggering internal watchdog timeout and CPU panic.',
-                    correctiveAction: 'De-soldered failed linear regulator and leaking electrolytic filter banks. Cleaned PCB traces with isopropyl alcohol, installed high-temperature grade replacement components, and reapplied military-grade silicone conformal coating.',
-                    testResults: 'Post-repair bench testing executed under 24VDC rail input. Thermal imaging confirmed normal operating temperatures. Profibus DP communication loop successfully established with zero packet loss.',
-                    photos: [
-                        { url: 'https://images.unsplash.com/photo-1581092335397-9583fe92d232?w=600', caption: 'De-soldered power regulator pads prior to cleaning' },
-                        { url: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=600', caption: 'Completed PCB conformal coating restoration' }
-                    ]
-                },
-                customerReport: {
-                    visualInspection: 'Conformal coating inspection completed. Aluminum chassis integrity verified.',
-                    initialFindings: 'Power regulation instability detected under operating load.',
-                    correctiveAction: 'Replaced failed power regulation components and filter banks. Applied protective circuit treatment.',
-                    testResults: 'Post-repair bench testing verified stable voltage output and zero packet loss on communication loops.',
-                    photos: [
-                        { url: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=600', caption: 'Unit fully restored and bench tested' }
-                    ],
-                    partsUsed: [
-                        { id: 'PART-VR1', name: 'Voltage Regulator VR1', qty: 1 },
-                        { id: 'PART-CAP', name: 'Filter Capacitor C12-C15', qty: 4 }
-                    ]
-                }
-            },
-            {
-                id: 'TCS_MY_260901_102', dateReceived: '2026-09-01', warrantyType: '', department: 'Electronic',
-                customerCompany: 'ExxonMobil', customerName: 'Sarah Connor', customerPhone: '+6012-3456789', customerEmail: 'sarah@exxon.com',
-                customerStreet: 'Level 17, Menara ExxonMobil', customerPostcode: '50088', customerCity: 'Kuala Lumpur', customerState: 'WP', customerCountry: 'Malaysia', customerPo: 'PO-40217',
-                itemName: 'Fisher Control Valve Positioner', brand: 'Fisher', model: 'DVC6200', serial: 'FCV-33210',
-                faultDescription: 'Valve not responding correctly to 4-20mA control signal from DCS. Positioner display shows intermittent fault code.',
-                status: 'Diagnostic', deliveryNotes: '',
-                assignedEngineer: '', promisedDate: '',
-                transferredFromMechanical: true, pendingElectronicPickup: true,
-                qcChecklist: { visualConfirmed: false, functionalConfirmed: false, calibrationConfirmed: false, documentationConfirmed: false, packagingConfirmed: false, result: '', notes: '', inspectorName: '', inspectorRole: '', timestamp: '' },
-                deliveryInfo: { courier: '', trackingNumber: '', shippedDate: '', packedBy: '' },
-                photos: [
-                    { url: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=600', caption: 'Valve assembly on intake at Mechanical bay' }
-                ],
-                documents: [],
-                partsUsed: [],
-                mechanicalReports: [
-                    { name: 'DVC6200_Stroke_Test_Report.pdf', size: '1.1 MB', uploadedBy: 'Zulkifli Hassan', uploadedAt: '2026-09-02T10:15:00', notes: 'Mechanical stroke test and seat leakage test both passed within spec. Valve body, actuator, and linkage are mechanically sound. Positioner intermittently loses signal response — suspect electronic fault in the positioner card. Handing over to Electronic department for diagnostic.' }
-                ],
-                statusHistory: [
-                    { status: 'Draft', timestamp: '2026-09-01T09:00:00', by: 'admin', byName: 'Admin User', type: 'status' },
-                    { status: 'Diagnostic', timestamp: '2026-09-01T10:00:00', by: 'mechanical', byName: 'Zulkifli Hassan', type: 'status', detail: 'Mechanical diagnostic started' },
-                    { status: 'Repairing', timestamp: '2026-09-01T14:00:00', by: 'mechanical', byName: 'Zulkifli Hassan', type: 'status', detail: 'Mechanical stroke and seat testing in progress' },
-                    { status: 'Diagnostic', timestamp: '2026-09-02T10:20:00', by: 'mechanical', byName: 'Zulkifli Hassan', type: 'transfer', detail: 'Transferred to Electronic Department. Handover note: "Mechanical stroke and seat test passed. Suspect faulty positioner electronics — valve body/actuator mechanically sound."' }
-                ],
-                preRepairDiagnostic: { internal: { ...EMPTY_DIAG_SIDE }, customer: { ...EMPTY_DIAG_SIDE } },
-                diagnosticReport: { visualInspection: '', initialFindings: '', correctiveAction: '', testResults: '', photos: [] },
-                customerReport: { visualInspection: '', initialFindings: '', correctiveAction: '', testResults: '', photos: [], partsUsed: [] }
-            }
-        ];
 
         const WORKFLOW_STEPS = ['Draft', 'Diagnostic', 'Waiting PO', 'Proceed Repair', 'Repairing', 'Repair Completed', 'Repair Failed', 'QC', 'Delivery Arrangement', 'Delivered'];
         const NEXT_WORKFLOW_STEP = { 'Draft': 'Diagnostic', 'Waiting PO': 'Proceed Repair', 'Proceed Repair': 'Repairing', 'Repair Completed': 'QC', 'Repair Failed': 'QC', 'QC': 'Delivery Arrangement', 'Delivery Arrangement': 'Delivered', 'Delivered': null };
@@ -264,15 +170,6 @@
             const data = await res.json();
             return data.fields || {};
         };
-
-        const INITIAL_USERS = [
-            { id: 'USR-001', name: 'Muhammad Haziq Fikri Bin Hamdan', email: 'haziqfikri6796@gmail.com', role: 'superadmin', status: 'Active', restrictions: {} },
-            { id: 'USR-002', name: 'Admin User', email: 'admin@turbocontrolsolutions.com.my', role: 'admin', status: 'Active', restrictions: {} },
-            { id: 'USR-003', name: 'Ahmad Faiz', email: 'faiz@turbocontrolsolutions.com.my', role: 'engineer', status: 'Active', restrictions: {} },
-            { id: 'USR-004', name: 'Nurul Ain', email: 'ain@turbocontrolsolutions.com.my', role: 'qc', status: 'Active', restrictions: {} },
-            { id: 'USR-005', name: 'Rahman Yusof', email: 'rahman@turbocontrolsolutions.com.my', role: 'logistic', status: 'Active', restrictions: {} },
-            { id: 'USR-006', name: 'Zulkifli Hassan', email: 'zulkifli@turbocontrolsolutions.com.my', role: 'mechanical', status: 'Active', restrictions: {} }
-        ];
 
         // Fill in your real facility details once here — every printable report pulls from this.
         const COMPANY_INFO = {
@@ -3121,14 +3018,28 @@
         };
 
         const UserFormModal = ({ user, onSave, onClose }) => {
-                const [form, setForm] = useState(user ? { ...user, restrictions: { ...(user.restrictions || {}) } } : { id: '', name: '', email: '', role: 'engineer', status: 'Active', restrictions: {} });
+                const [form, setForm] = useState(user ? { ...user, restrictions: { ...(user.restrictions || {}) }, password: '' } : { id: '', name: '', email: '', role: 'engineer', status: 'Active', restrictions: {}, password: '' });
+                const [saving, setSaving] = useState(false);
+                const [error, setError] = useState('');
                 const basePerms = ROLE_PERMISSIONS[form.role] || ROLE_PERMISSIONS.engineer;
                 const applicableRestrictions = RESTRICTABLE_PERMS.filter(([key]) => basePerms[key] === true);
 
-                const handleSubmit = (e) => {
+                const handleSubmit = async (e) => {
                     e.preventDefault();
-                    if (!form.name.trim()) return alert('Full name is required.');
-                    onSave({ ...form, id: form.id || ('USR-' + Date.now().toString(36).toUpperCase()) });
+                    setError('');
+                    if (!form.name.trim()) { setError('Full name is required.'); return; }
+                    if (!user) {
+                        if (!form.email.trim()) { setError('Email is required to create a login.'); return; }
+                        if (form.password.length < 8) { setError('Password must be at least 8 characters.'); return; }
+                    }
+                    setSaving(true);
+                    try {
+                        await onSave(form);
+                    } catch (err) {
+                        setError(err.message || 'Something went wrong.');
+                    } finally {
+                        setSaving(false);
+                    }
                 };
 
                 return (
@@ -3140,7 +3051,10 @@
                                     <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700"><i className="fa-solid fa-xmark text-xl"></i></button>
                                 </div>
                                 <div><label className="block text-xs font-bold text-slate-700 mb-1">Full Name</label><input required type="text" value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm" /></div>
-                                <div><label className="block text-xs font-bold text-slate-700 mb-1">Email</label><input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm" /></div>
+                                <div><label className="block text-xs font-bold text-slate-700 mb-1">Email {!user && <span className="font-normal text-slate-400 normal-case">(this becomes their login)</span>}</label><input required={!user} disabled={!!user} type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm disabled:bg-slate-50 disabled:text-slate-500" /></div>
+                                {!user && (
+                                    <div><label className="block text-xs font-bold text-slate-700 mb-1">Temporary Password</label><input required type="text" value={form.password} onChange={e => setForm({...form, password: e.target.value})} placeholder="At least 8 characters — share this with them securely" className="w-full border border-slate-300 rounded p-2.5 text-sm font-mono" /></div>
+                                )}
                                 <div>
                                     <label className="block text-xs font-bold text-slate-700 mb-1">Role</label>
                                     <select value={form.role} onChange={e => setForm({...form, role: e.target.value, restrictions: {}})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-white">
@@ -3167,9 +3081,10 @@
                                         </div>
                                     </div>
                                 )}
+                                {error && <p className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded p-2.5">{error}</p>}
                                 <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                                     <button type="button" onClick={onClose} className="text-slate-600 font-semibold px-5 py-2.5 hover:bg-slate-100 rounded">Cancel</button>
-                                    <button type="submit" className="bg-brand-800 text-white px-6 py-2.5 rounded font-bold text-sm hover:bg-brand-900 shadow-md">{user ? 'Save Changes' : 'Create Account'}</button>
+                                    <button disabled={saving} type="submit" className="bg-brand-800 text-white px-6 py-2.5 rounded font-bold text-sm hover:bg-brand-900 shadow-md disabled:opacity-60">{saving ? 'Saving…' : (user ? 'Save Changes' : 'Create Account')}</button>
                                 </div>
                             </form>
                         </div>
@@ -3177,25 +3092,64 @@
                 );
         };
 
-        const UserManagement = ({ users, setUsers, currentUserName, onSwitchUser }) => {
+        const UserManagement = ({ users, setUsers, currentUserName }) => {
                 const [editingUser, setEditingUser] = useState(null);
                 const [showForm, setShowForm] = useState(false);
+                const [busyId, setBusyId] = useState(null);
 
-                const handleSave = (userData) => {
-                    setUsers(prev => {
-                        const exists = prev.some(u => u.id === userData.id);
-                        return exists ? prev.map(u => u.id === userData.id ? userData : u) : [...prev, userData];
+                // Creating a login (and deleting one) needs Supabase's admin API, which requires
+                // the service_role secret — that only runs server-side, in /api/admin-users.
+                // Editing role/status/restrictions on an EXISTING account can go straight to the
+                // database: Row Level Security already only allows a superadmin to do that.
+                const callAdminUsersApi = async (payload) => {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    const res = await fetch(ADMIN_USERS_ENDPOINT, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+                        body: JSON.stringify(payload),
                     });
+                    const body = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+                    return body;
+                };
+
+                const handleSave = async (form) => {
+                    if (!editingUser) {
+                        const { profile } = await callAdminUsersApi({
+                            action: 'create', email: form.email, name: form.name, role: form.role,
+                            status: form.status, restrictions: form.restrictions, password: form.password,
+                        });
+                        setUsers(prev => [...prev, profile]);
+                    } else {
+                        const { error } = await supabase.from('profiles')
+                            .update({ name: form.name, role: form.role, status: form.status, restrictions: form.restrictions })
+                            .eq('id', form.id);
+                        if (error) throw new Error(error.message);
+                        setUsers(prev => prev.map(u => u.id === form.id ? { ...u, name: form.name, role: form.role, status: form.status, restrictions: form.restrictions } : u));
+                    }
                     setShowForm(false); setEditingUser(null);
                 };
 
-                const handleDelete = (user) => {
-                    if (!window.confirm(`Remove the account for ${user.name}? This cannot be undone.`)) return;
-                    setUsers(prev => prev.filter(u => u.id !== user.id));
+                const handleDelete = async (user) => {
+                    if (!window.confirm(`Remove the login for ${user.name}? This cannot be undone.`)) return;
+                    setBusyId(user.id);
+                    try {
+                        await callAdminUsersApi({ action: 'delete', id: user.id });
+                        setUsers(prev => prev.filter(u => u.id !== user.id));
+                    } catch (err) {
+                        alert(`Couldn't delete this account: ${err.message}`);
+                    } finally {
+                        setBusyId(null);
+                    }
                 };
 
-                const toggleStatus = (user) => {
-                    setUsers(prev => prev.map(u => u.id === user.id ? { ...u, status: u.status === 'Active' ? 'Suspended' : 'Active' } : u));
+                const toggleStatus = async (user) => {
+                    const nextStatus = user.status === 'Active' ? 'Suspended' : 'Active';
+                    setBusyId(user.id);
+                    const { error } = await supabase.from('profiles').update({ status: nextStatus }).eq('id', user.id);
+                    setBusyId(null);
+                    if (error) { alert(`Couldn't update status: ${error.message}`); return; }
+                    setUsers(prev => prev.map(u => u.id === user.id ? { ...u, status: nextStatus } : u));
                 };
 
                 return (
@@ -3203,7 +3157,7 @@
                         <div className="flex justify-between items-center mb-8 border-b pb-4 flex-wrap gap-4">
                             <div>
                                 <h2 className="text-2xl font-bold text-slate-800 tracking-tight">User & Access Management</h2>
-                                <p className="text-sm text-slate-500 mt-1">Create accounts, assign roles, and restrict specific permissions. Superadmin only.</p>
+                                <p className="text-sm text-slate-500 mt-1">Create real login accounts, assign roles, and restrict specific permissions. Superadmin only.</p>
                             </div>
                             <button onClick={() => { setEditingUser(null); setShowForm(true); }} className="bg-brand-800 hover:bg-brand-900 text-white px-5 py-2 rounded-lg text-sm font-bold transition shadow-md whitespace-nowrap">
                                 <i className="fa-solid fa-user-plus mr-2"></i> New User
@@ -3235,10 +3189,9 @@
                                                 <td className="p-4 text-xs text-slate-500">{restrictionCount > 0 ? `${restrictionCount} restricted` : <span className="italic text-slate-400">None</span>}</td>
                                                 <td className="p-4"><span className={`text-[11px] font-bold uppercase px-2 py-1 rounded ${user.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{user.status}</span></td>
                                                 <td className="p-4 text-right space-x-3 whitespace-nowrap">
-                                                    <button disabled={user.status !== 'Active'} onClick={() => onSwitchUser(user)} className="text-xs font-bold text-brand-700 hover:underline disabled:opacity-30 disabled:cursor-not-allowed disabled:no-underline" title={user.status !== 'Active' ? 'Account suspended' : 'Switch to this user'}>Switch To</button>
-                                                    <button onClick={() => { setEditingUser(user); setShowForm(true); }} className="text-xs font-bold text-slate-600 hover:underline">Edit</button>
-                                                    <button onClick={() => toggleStatus(user)} className="text-xs font-bold text-amber-600 hover:underline">{user.status === 'Active' ? 'Suspend' : 'Activate'}</button>
-                                                    <button onClick={() => handleDelete(user)} className="text-xs font-bold text-red-600 hover:underline">Delete</button>
+                                                    <button disabled={busyId === user.id} onClick={() => { setEditingUser(user); setShowForm(true); }} className="text-xs font-bold text-slate-600 hover:underline disabled:opacity-40">Edit</button>
+                                                    <button disabled={busyId === user.id} onClick={() => toggleStatus(user)} className="text-xs font-bold text-amber-600 hover:underline disabled:opacity-40">{user.status === 'Active' ? 'Suspend' : 'Activate'}</button>
+                                                    <button disabled={busyId === user.id || user.name === currentUserName} onClick={() => handleDelete(user)} className="text-xs font-bold text-red-600 hover:underline disabled:opacity-40" title={user.name === currentUserName ? "You can't delete your own account" : ''}>Delete</button>
                                                 </td>
                                             </tr>
                                         );
@@ -3300,14 +3253,119 @@
                 );
         };
 
+        const AuthGateScreen = ({ icon, title, message, onLogout }) => (
+            <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+                <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-8 text-center">
+                    <div className="w-14 h-14 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-2xl mx-auto mb-4"><i className={`fa-solid ${icon}`}></i></div>
+                    <h2 className="text-base font-bold text-slate-800">{title}</h2>
+                    <p className="text-sm text-slate-500 mt-2">{message}</p>
+                    {onLogout && <button onClick={onLogout} className="mt-5 text-xs font-bold text-slate-500 hover:text-brand-700 hover:underline">Log out and try a different account</button>}
+                </div>
+            </div>
+        );
+
+        const LoginScreen = () => {
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [error, setError] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [resetSent, setResetSent] = useState(false);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setError(''); setResetSent(false); setLoading(true);
+                const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+                setLoading(false);
+                if (signInError) setError(signInError.message);
+                // On success, App's onAuthStateChange listener picks up the new session automatically.
+            };
+
+            const handleForgotPassword = async () => {
+                if (!email) { setError('Enter your email above first, then click "Forgot password".'); return; }
+                setError(''); setLoading(true);
+                const { error: resetError } = await supabase.auth.resetPasswordForEmail(email);
+                setLoading(false);
+                if (resetError) { setError(resetError.message); return; }
+                setResetSent(true);
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+                    <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-8">
+                        <div className="flex flex-col items-center mb-6">
+                            <div className="w-14 h-14 rounded-lg bg-brand-900 flex items-center justify-center relative shrink-0 shadow-md mb-3">
+                                <i className="fa-solid fa-gear text-white text-xl absolute -translate-x-1 -translate-y-0.5"></i>
+                                <i className="fa-solid fa-bolt text-signal-500 text-sm absolute translate-x-2.5 translate-y-2.5"></i>
+                            </div>
+                            <h1 className="text-lg font-black text-brand-900 uppercase tracking-wide text-center">Turbo Control Solutions</h1>
+                            <p className="text-xs text-slate-500 mt-1">Enterprise Service Management</p>
+                        </div>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Email</label>
+                                <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full border border-slate-300 rounded p-2.5 text-sm" autoComplete="username" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Password</label>
+                                <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full border border-slate-300 rounded p-2.5 text-sm" autoComplete="current-password" />
+                            </div>
+                            {error && <p className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded p-2.5">{error}</p>}
+                            {resetSent && <p className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded p-2.5">Password reset email sent — check your inbox.</p>}
+                            <button disabled={loading} type="submit" className="w-full bg-brand-800 hover:bg-brand-900 text-white py-2.5 rounded font-bold text-sm shadow-md disabled:opacity-60">
+                                {loading ? 'Signing in…' : 'Sign In'}
+                            </button>
+                            <button type="button" onClick={handleForgotPassword} className="w-full text-xs font-bold text-slate-500 hover:text-brand-700 hover:underline">Forgot password?</button>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
         function App() {
+            // --- Auth state -------------------------------------------------------
+            // `session` starts `undefined` (haven't checked yet) so we can tell that
+            // apart from `null` (checked, definitely logged out) and avoid flashing
+            // the login screen for a moment on every page load.
+            const [session, setSession] = useState(undefined);
+            const [profile, setProfile] = useState(null);
+            const [profileError, setProfileError] = useState('');
+
+            useEffect(() => {
+                supabase.auth.getSession().then(({ data }) => setSession(data.session));
+                const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+                    setSession(newSession);
+                    if (!newSession) setProfile(null);
+                });
+                return () => listener.subscription.unsubscribe();
+            }, []);
+
+            useEffect(() => {
+                if (!session) return;
+                let cancelled = false;
+                setProfileError('');
+                supabase.from('profiles').select('*').eq('id', session.user.id).single().then(({ data, error }) => {
+                    if (cancelled) return;
+                    if (error || !data) {
+                        setProfileError("Your login works, but no account profile is set up for you yet. Ask a superadmin to add you in Supabase (table 'profiles').");
+                        return;
+                    }
+                    setProfile(data);
+                });
+                return () => { cancelled = true; };
+            }, [session]);
+
+            const handleLogout = () => { supabase.auth.signOut(); };
+
+            const userRole = profile?.role || 'engineer';
+            const currentUserName = profile?.name || session?.user?.email || '';
+            const activeRestrictions = (profile?.restrictions && Object.keys(profile.restrictions).length) ? profile.restrictions : null;
+
             const [activeTab, setActiveTab] = useState('dashboard');
-            const [userRole, setUserRole] = useState('engineer');
-            const [currentUserName, setCurrentUserName] = useState('Muhammad Haziq Fikri Bin Hamdan');
-            const [repairs, setRepairs] = useState(INITIAL_REPAIRS);
-            const [customers, setCustomers] = useState(PRESET_CUSTOMERS);
-            const [users, setUsers] = useState(INITIAL_USERS);
-            const [activeRestrictions, setActiveRestrictions] = useState(null);
+            const [repairs, setRepairsState] = useState([]);
+            const [customers, setCustomersState] = useState([]);
+            const [users, setUsers] = useState([]);
+            const [dataLoading, setDataLoading] = useState(true);
+            const [dataError, setDataError] = useState('');
             const [stock, setStock] = useState([]);
             const [transactions, setTransactions] = useState([]);
             const [partRequests, setPartRequests] = useState([]);
@@ -3319,6 +3377,65 @@
             const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
             const perms = applyPermRestrictions(ROLE_PERMISSIONS[userRole] || ROLE_PERMISSIONS.engineer, activeRestrictions);
+
+            // --- Repairs / customers: load from Supabase once logged in, and persist
+            // any change back automatically. Every existing handler throughout the app
+            // already calls setRepairs(...)/setCustomers(...) the same way it always did
+            // (either a new array, or a functional updater) — wrapping the setter here
+            // means none of that business logic needed to change.
+            useEffect(() => {
+                if (!profile) return;
+                let cancelled = false;
+                setDataLoading(true);
+                setDataError('');
+                Promise.all([
+                    supabase.from('repairs').select('id, data'),
+                    supabase.from('customers').select('id, data'),
+                    supabase.from('profiles').select('*'),
+                ]).then(([repairsRes, customersRes, profilesRes]) => {
+                    if (cancelled) return;
+                    if (repairsRes.error || customersRes.error || profilesRes.error) {
+                        setDataError('Failed to load work orders, customers, or user accounts from the database.');
+                        setDataLoading(false);
+                        return;
+                    }
+                    setRepairsState((repairsRes.data || []).map(row => ({ ...row.data, id: row.id })));
+                    setCustomersState((customersRes.data || []).map(row => ({ ...row.data, id: row.id })));
+                    setUsers(profilesRes.data || []);
+                    setDataLoading(false);
+                });
+                return () => { cancelled = true; };
+            }, [profile]);
+
+            // Only rows whose object reference actually changed get upserted — every mutation
+            // in this app builds its next array via `.map(r => r.id === id ? updated : r)` or
+            // an array-spread prepend, both of which keep untouched rows' references intact.
+            const diffChangedRows = (prevArr, nextArr) => {
+                const prevById = new Map(prevArr.map(r => [r.id, r]));
+                return nextArr.filter(r => prevById.get(r.id) !== r);
+            };
+
+            const persistRows = async (table, rows) => {
+                if (!rows.length) return;
+                const { error } = await supabase.from(table).upsert(rows.map(r => ({ id: r.id, data: r })));
+                if (error) console.error(`Failed to save to ${table}:`, error);
+            };
+
+            const setRepairs = (update) => {
+                setRepairsState(prev => {
+                    const next = typeof update === 'function' ? update(prev) : update;
+                    persistRows('repairs', diffChangedRows(prev, next));
+                    return next;
+                });
+            };
+
+            const setCustomers = (update) => {
+                setCustomersState(prev => {
+                    const next = typeof update === 'function' ? update(prev) : update;
+                    persistRows('customers', diffChangedRows(prev, next));
+                    return next;
+                });
+            };
 
             const loadData = () => {
                 setLoadingStock(true);
@@ -3484,15 +3601,6 @@
                 setTimeout(loadData, 1500);
             };
 
-            const roleOptions = Object.entries(ROLE_LABELS);
-
-            const handleSwitchUser = (user) => {
-                setUserRole(user.role);
-                setCurrentUserName(user.name);
-                setActiveRestrictions(user.restrictions && Object.keys(user.restrictions).length ? user.restrictions : null);
-                navigateTo('dashboard');
-                setMobileMenuOpen(false);
-            };
 
             const NavLinks = ({ onNavigate }) => (
                 <React.Fragment>
@@ -3512,20 +3620,41 @@
             );
 
             const IdentityControls = () => (
-                <React.Fragment>
-                    <div>
-                        <label className="block text-[10px] font-black text-brand-500 uppercase tracking-widest mb-2 flex items-center"><i className="fa-regular fa-id-badge mr-2"></i> Your Name</label>
-                        <input type="text" value={currentUserName} onChange={(e) => setCurrentUserName(e.target.value)} className="w-full bg-brand-900 border border-brand-700 text-white rounded p-2.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-inner" />
+                <div>
+                    <label className="block text-[10px] font-black text-brand-500 uppercase tracking-widest mb-2 flex items-center"><i className="fa-regular fa-id-badge mr-2"></i> Signed in as</label>
+                    <div className="bg-brand-900 border border-brand-700 rounded p-2.5">
+                        <p className="text-xs font-bold text-white truncate">{currentUserName}</p>
+                        <p className="text-[10px] text-brand-400 mt-0.5">{ROLE_LABELS[userRole] || userRole}</p>
                     </div>
-                    <div>
-                        <label className="block text-[10px] font-black text-brand-500 uppercase tracking-widest mb-2 flex items-center"><i className="fa-solid fa-shield-halved mr-2"></i> Security Context Override</label>
-                        <select value={userRole} onChange={(e) => { setUserRole(e.target.value); setActiveRestrictions(null); navigateTo('dashboard'); setMobileMenuOpen(false); }} className="w-full bg-brand-900 border border-brand-700 text-white rounded p-2.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-inner">
-                            {roleOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                        </select>
-                        {activeRestrictions && <p className="text-[10px] text-amber-400 mt-1.5"><i className="fa-solid fa-lock mr-1"></i>Extra restrictions active from your user account</p>}
-                    </div>
-                </React.Fragment>
+                    {activeRestrictions && <p className="text-[10px] text-amber-400 mt-1.5"><i className="fa-solid fa-lock mr-1"></i>Extra restrictions active on your account</p>}
+                    <button onClick={handleLogout} className="w-full mt-2 text-xs font-bold text-slate-400 hover:text-white border border-brand-700 hover:border-brand-500 rounded py-2 transition"><i className="fa-solid fa-right-from-bracket mr-1.5"></i> Log Out</button>
+                </div>
             );
+
+            // --- Auth / data gating -------------------------------------------------
+            // `session === undefined` means we haven't checked yet (avoids a login-screen
+            // flash on every reload); `null` means definitely logged out.
+            if (session === undefined) {
+                return <AuthGateScreen icon="fa-spinner fa-spin" title="Loading" message="Checking your session…" />;
+            }
+            if (!session) {
+                return <LoginScreen />;
+            }
+            if (profileError) {
+                return <AuthGateScreen icon="fa-triangle-exclamation" title="Account not ready" message={profileError} onLogout={handleLogout} />;
+            }
+            if (!profile) {
+                return <AuthGateScreen icon="fa-spinner fa-spin" title="Loading your account" message="One moment…" />;
+            }
+            if (profile.status === 'Suspended') {
+                return <AuthGateScreen icon="fa-lock" title="Account suspended" message="Your account has been suspended. Contact a superadmin if you believe this is a mistake." onLogout={handleLogout} />;
+            }
+            if (dataLoading) {
+                return <AuthGateScreen icon="fa-spinner fa-spin" title="Loading work orders" message="Fetching the latest jobs and customer records…" />;
+            }
+            if (dataError) {
+                return <AuthGateScreen icon="fa-triangle-exclamation" title="Couldn't load data" message={dataError} onLogout={handleLogout} />;
+            }
 
             return (
                 <div className="min-h-screen flex text-slate-800 bg-slate-100">
@@ -3589,7 +3718,7 @@
                             {activeTab === 'new-repair' && <NewRepairForm repairs={repairs} setRepairs={setRepairs} customers={customers} setCustomers={setCustomers} navigateTo={navigateTo} setPreviewImage={setPreviewImage} userRole={userRole} currentUserName={currentUserName} />}
                             {activeTab === 'inventory' && <Inventory stock={stock} loadData={loadData} selectedItemDetail={selectedItemDetail} setSelectedItemDetail={setSelectedItemDetail} transactions={transactions} stockError={stockError} perms={perms} onCreateRequest={handleCreatePartRequest} />}
                             {activeTab === 'part-requests' && (perms.canRequestParts || perms.canManagePurchaseOrders) && <PartRequests partRequests={partRequests} stock={stock} repairs={repairs} perms={perms} currentUserName={currentUserName} onCreateRequest={handleCreatePartRequest} onUpdateStatus={handleUpdatePartRequestStatus} />}
-                            {activeTab === 'users' && perms.canManageUsers && <UserManagement users={users} setUsers={setUsers} currentUserName={currentUserName} onSwitchUser={handleSwitchUser} />}
+                            {activeTab === 'users' && perms.canManageUsers && <UserManagement users={users} setUsers={setUsers} currentUserName={currentUserName} />}
                             {activeTab === 'activity' && perms.canManageUsers && <ActivityLog repairs={repairs} />}
                         </div>
 
