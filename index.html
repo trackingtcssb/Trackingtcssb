@@ -144,6 +144,15 @@
 
         const EMPTY_DIAG_SIDE = { visualInspection: '', probableCause: '', recommendedAction: '', notes: '', photos: [] };
 
+        // Joins address parts skipping any that are blank, so a missing state/postcode
+        // doesn't leave a dangling ", ," in printed reports and customer-facing views.
+        const formatCustomerAddress = (repair, { includeCountry = false } = {}) => {
+            const cityLine = [repair.customerPostcode, repair.customerCity].filter(Boolean).join(' ');
+            const parts = [repair.customerStreet, cityLine, repair.customerState];
+            if (includeCountry) parts.push(repair.customerCountry);
+            return parts.filter(Boolean).join(', ');
+        };
+
         const WORKFLOW_STEPS = ['Draft', 'Diagnostic', 'Waiting PO', 'Proceed Repair', 'Repairing', 'Repair Completed', 'Repair Failed', 'QC', 'Delivery Arrangement', 'Delivered'];
         const NEXT_WORKFLOW_STEP = { 'Draft': 'Diagnostic', 'Waiting PO': 'Proceed Repair', 'Proceed Repair': 'Repairing', 'Repair Completed': 'QC', 'Repair Failed': 'QC', 'QC': 'Delivery Arrangement', 'Delivery Arrangement': 'Delivered', 'Delivered': null };
 
@@ -2123,7 +2132,7 @@
                                             <div className="md:col-span-2 pt-4 border-t border-slate-100">
                                                 <div className="text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Ship To</div>
                                                 <div className="font-bold text-slate-900">{selectedRepair.customerCompany}</div>
-                                                <div className="text-slate-600 mt-1">{selectedRepair.customerStreet}, {selectedRepair.customerPostcode} {selectedRepair.customerCity}, {selectedRepair.customerState}, {selectedRepair.customerCountry}</div>
+                                                <div className="text-slate-600 mt-1">{formatCustomerAddress(selectedRepair, { includeCountry: true })}</div>
                                                 <div className="text-slate-600 mt-1"><strong>Attn:</strong> {selectedRepair.customerName} • {selectedRepair.customerPhone}</div>
                                             </div>
                                         </div>
@@ -2406,7 +2415,7 @@
                                     <div className="p-4 border-r border-slate-300">
                                         <div className="text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Client Organization</div>
                                         <div className="font-bold text-slate-900 text-sm">{selectedRepair.customerCompany}</div>
-                                        <div className="text-xs text-slate-700 mt-1">{selectedRepair.customerStreet}, {selectedRepair.customerPostcode} {selectedRepair.customerCity}, {selectedRepair.customerState}</div>
+                                        <div className="text-xs text-slate-700 mt-1">{formatCustomerAddress(selectedRepair)}</div>
                                         <div className="text-xs text-slate-700 mt-1.5 font-medium"><strong>Attn:</strong> {selectedRepair.customerName} ({selectedRepair.customerPhone})</div>
                                         <div className="text-xs text-slate-700 mt-1.5"><strong>PO / Ref:</strong> {selectedRepair.customerPo || 'N/A'}</div>
                                     </div>
@@ -2543,16 +2552,16 @@
                                     <div className="p-4 border-r border-slate-300">
                                         <div className="text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Client Organization</div>
                                         <div className="font-bold text-slate-900 text-sm">{selectedRepair.customerCompany}</div>
-                                        <div className="text-xs text-slate-700 mt-1">{selectedRepair.customerStreet}, {selectedRepair.customerPostcode} {selectedRepair.customerCity}, {selectedRepair.customerState}</div>
+                                        <div className="text-xs text-slate-700 mt-1">{formatCustomerAddress(selectedRepair)}</div>
                                         <div className="text-xs text-slate-700 mt-1.5 font-medium"><strong>Attn:</strong> {selectedRepair.customerName} ({selectedRepair.customerPhone})</div>
                                     </div>
                                     <div className="p-4">
                                         <div className="text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Equipment Identification</div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mt-1">
-                                            <div><span className="text-slate-500 block">Job Tracking ID</span><span className="font-mono font-bold text-slate-900">{selectedRepair.id}</span></div>
-                                            <div><span className="text-slate-500 block">Client PO / Ref</span><span className="font-bold text-slate-900">{selectedRepair.customerPo || 'N/A'}</span></div>
-                                            <div className="col-span-2 mt-1"><span className="text-slate-500 block">Item Profile</span><span className="font-bold text-slate-900">{selectedRepair.brand} {selectedRepair.model} — {selectedRepair.itemName}</span></div>
-                                            <div className="col-span-2"><span className="text-slate-500 block">Serial Number</span><span className="font-mono font-bold text-brand-700">{selectedRepair.serial}</span></div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs mt-1">
+                                            <div className="min-w-0"><span className="text-slate-500 block">Job Tracking ID</span><span className="font-mono font-bold text-slate-900 break-words">{selectedRepair.id}</span></div>
+                                            <div className="min-w-0"><span className="text-slate-500 block">Client PO / Ref</span><span className="font-bold text-slate-900 break-words">{selectedRepair.customerPo || 'N/A'}</span></div>
+                                            <div className="col-span-2 mt-1 min-w-0"><span className="text-slate-500 block">Item Profile</span><span className="font-bold text-slate-900 break-words">{selectedRepair.brand} {selectedRepair.model} — {selectedRepair.itemName}</span></div>
+                                            <div className="col-span-2 min-w-0"><span className="text-slate-500 block">Serial Number</span><span className="font-mono font-bold text-brand-700 break-words">{selectedRepair.serial}</span></div>
                                         </div>
                                     </div>
                                 </div>
@@ -2694,16 +2703,16 @@
                                     <div className="p-4 border-r border-slate-300">
                                         <div className="text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Client Organization</div>
                                         <div className="font-bold text-slate-900 text-sm">{selectedRepair.customerCompany}</div>
-                                        <div className="text-xs text-slate-700 mt-1">{selectedRepair.customerStreet}, {selectedRepair.customerPostcode} {selectedRepair.customerCity}, {selectedRepair.customerState}</div>
+                                        <div className="text-xs text-slate-700 mt-1">{formatCustomerAddress(selectedRepair)}</div>
                                         <div className="text-xs text-slate-700 mt-1.5 font-medium"><strong>Attn:</strong> {selectedRepair.customerName} ({selectedRepair.customerPhone})</div>
                                     </div>
                                     <div className="p-4">
                                         <div className="text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Equipment Identification</div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mt-1">
-                                            <div><span className="text-slate-500 block">Job Tracking ID</span><span className="font-mono font-bold text-slate-900">{selectedRepair.id}</span></div>
-                                            <div><span className="text-slate-500 block">Client PO / Ref</span><span className="font-bold text-slate-900">{selectedRepair.customerPo || 'N/A'}</span></div>
-                                            <div className="col-span-2 mt-1"><span className="text-slate-500 block">Item Profile</span><span className="font-bold text-slate-900">{selectedRepair.brand} {selectedRepair.model} — {selectedRepair.itemName}</span></div>
-                                            <div className="col-span-2"><span className="text-slate-500 block">Serial Number</span><span className="font-mono font-bold text-brand-700">{selectedRepair.serial}</span></div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs mt-1">
+                                            <div className="min-w-0"><span className="text-slate-500 block">Job Tracking ID</span><span className="font-mono font-bold text-slate-900 break-words">{selectedRepair.id}</span></div>
+                                            <div className="min-w-0"><span className="text-slate-500 block">Client PO / Ref</span><span className="font-bold text-slate-900 break-words">{selectedRepair.customerPo || 'N/A'}</span></div>
+                                            <div className="col-span-2 mt-1 min-w-0"><span className="text-slate-500 block">Item Profile</span><span className="font-bold text-slate-900 break-words">{selectedRepair.brand} {selectedRepair.model} — {selectedRepair.itemName}</span></div>
+                                            <div className="col-span-2 min-w-0"><span className="text-slate-500 block">Serial Number</span><span className="font-mono font-bold text-brand-700 break-words">{selectedRepair.serial}</span></div>
                                         </div>
                                     </div>
                                 </div>
@@ -3124,15 +3133,15 @@
                                 <div className="print-section bg-white p-12 rounded-xl border border-slate-200 shadow-sm max-w-3xl">
                                     <PrintLetterhead docTitle="DELIVERY / PACKING SLIP" refLabel="Packing Slip Ref" refValue={selectedRepair.id} dateLabel="Date" dateValue={new Date().toLocaleDateString()} />
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm">
-                                        <div>
+                                        <div className="min-w-0">
                                             <div className="text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Ship To</div>
                                             <div className="font-bold text-slate-900">{selectedRepair.customerCompany}</div>
-                                            <div className="text-slate-700 mt-1">{selectedRepair.customerStreet}, {selectedRepair.customerPostcode} {selectedRepair.customerCity}, {selectedRepair.customerState}, {selectedRepair.customerCountry}</div>
+                                            <div className="text-slate-700 mt-1">{formatCustomerAddress(selectedRepair, { includeCountry: true })}</div>
                                             <div className="text-slate-700 mt-1"><strong>Attn:</strong> {selectedRepair.customerName} • {selectedRepair.customerPhone}</div>
                                         </div>
-                                        <div>
+                                        <div className="min-w-0">
                                             <div className="text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Shipment Info</div>
-                                            <div className="text-slate-700">Job ID: <strong>{selectedRepair.id}</strong></div>
+                                            <div className="text-slate-700 break-words">Job ID: <strong>{selectedRepair.id}</strong></div>
                                             <div className="text-slate-700">Courier: <strong>{deliveryInfo.courier || '—'}</strong></div>
                                             <div className="text-slate-700">Tracking No.: <strong>{deliveryInfo.trackingNumber || '—'}</strong></div>
                                             <div className="text-slate-700">Shipped Date: <strong>{deliveryInfo.shippedDate || '—'}</strong></div>
