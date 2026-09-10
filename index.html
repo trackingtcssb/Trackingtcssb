@@ -95,7 +95,50 @@
         } catch (e) { TAB_ID = 'tab_' + Math.random().toString(36).slice(2); }
 
         const POPULAR_BRANDS = ['Woodward', 'Siemens', 'Allen-Bradley', 'Yokogawa', 'Emerson', 'Bently Nevada', 'GE Fanuc', 'Schneider Electric', 'Honeywell', 'ABB'];
-        const COUNTRY_CODES = { "Malaysia": "MY", "Singapore": "SG", "Indonesia": "ID", "United States": "US", "United Kingdom": "GB", "United Arab Emirates": "AE" };
+        // Full ISO 3166-1 country list (common English short names) -> alpha-2 code,
+        // used both for the Country Registry picker and the job ID's country prefix.
+        const COUNTRY_CODES = {
+            "Afghanistan": "AF", "Albania": "AL", "Algeria": "DZ", "Andorra": "AD", "Angola": "AO",
+            "Antigua and Barbuda": "AG", "Argentina": "AR", "Armenia": "AM", "Australia": "AU", "Austria": "AT",
+            "Azerbaijan": "AZ", "Bahamas": "BS", "Bahrain": "BH", "Bangladesh": "BD", "Barbados": "BB",
+            "Belarus": "BY", "Belgium": "BE", "Belize": "BZ", "Benin": "BJ", "Bhutan": "BT",
+            "Bolivia": "BO", "Bosnia and Herzegovina": "BA", "Botswana": "BW", "Brazil": "BR", "Brunei": "BN",
+            "Bulgaria": "BG", "Burkina Faso": "BF", "Burundi": "BI", "Cabo Verde": "CV", "Cambodia": "KH",
+            "Cameroon": "CM", "Canada": "CA", "Central African Republic": "CF", "Chad": "TD", "Chile": "CL",
+            "China": "CN", "Colombia": "CO", "Comoros": "KM", "Congo (Brazzaville)": "CG", "Congo (DRC)": "CD",
+            "Costa Rica": "CR", "Croatia": "HR", "Cuba": "CU", "Cyprus": "CY", "Czechia": "CZ",
+            "Denmark": "DK", "Djibouti": "DJ", "Dominica": "DM", "Dominican Republic": "DO", "Ecuador": "EC",
+            "Egypt": "EG", "El Salvador": "SV", "Equatorial Guinea": "GQ", "Eritrea": "ER", "Estonia": "EE",
+            "Eswatini": "SZ", "Ethiopia": "ET", "Fiji": "FJ", "Finland": "FI", "France": "FR",
+            "Gabon": "GA", "Gambia": "GM", "Georgia": "GE", "Germany": "DE", "Ghana": "GH",
+            "Greece": "GR", "Grenada": "GD", "Guatemala": "GT", "Guinea": "GN", "Guinea-Bissau": "GW",
+            "Guyana": "GY", "Haiti": "HT", "Honduras": "HN", "Hong Kong": "HK", "Hungary": "HU",
+            "Iceland": "IS", "India": "IN", "Indonesia": "ID", "Iran": "IR", "Iraq": "IQ",
+            "Ireland": "IE", "Israel": "IL", "Italy": "IT", "Ivory Coast": "CI", "Jamaica": "JM",
+            "Japan": "JP", "Jordan": "JO", "Kazakhstan": "KZ", "Kenya": "KE", "Kiribati": "KI",
+            "Kosovo": "XK", "Kuwait": "KW", "Kyrgyzstan": "KG", "Laos": "LA", "Latvia": "LV",
+            "Lebanon": "LB", "Lesotho": "LS", "Liberia": "LR", "Libya": "LY", "Liechtenstein": "LI",
+            "Lithuania": "LT", "Luxembourg": "LU", "Macau": "MO", "Madagascar": "MG", "Malawi": "MW",
+            "Malaysia": "MY", "Maldives": "MV", "Mali": "ML", "Malta": "MT", "Marshall Islands": "MH",
+            "Mauritania": "MR", "Mauritius": "MU", "Mexico": "MX", "Micronesia": "FM", "Moldova": "MD",
+            "Monaco": "MC", "Mongolia": "MN", "Montenegro": "ME", "Morocco": "MA", "Mozambique": "MZ",
+            "Myanmar": "MM", "Namibia": "NA", "Nauru": "NR", "Nepal": "NP", "Netherlands": "NL",
+            "New Zealand": "NZ", "Nicaragua": "NI", "Niger": "NE", "Nigeria": "NG", "North Korea": "KP",
+            "North Macedonia": "MK", "Norway": "NO", "Oman": "OM", "Pakistan": "PK", "Palau": "PW",
+            "Palestine": "PS", "Panama": "PA", "Papua New Guinea": "PG", "Paraguay": "PY", "Peru": "PE",
+            "Philippines": "PH", "Poland": "PL", "Portugal": "PT", "Qatar": "QA", "Romania": "RO",
+            "Russia": "RU", "Rwanda": "RW", "Saint Kitts and Nevis": "KN", "Saint Lucia": "LC", "Saint Vincent and the Grenadines": "VC",
+            "Samoa": "WS", "San Marino": "SM", "Sao Tome and Principe": "ST", "Saudi Arabia": "SA", "Senegal": "SN",
+            "Serbia": "RS", "Seychelles": "SC", "Sierra Leone": "SL", "Singapore": "SG", "Slovakia": "SK",
+            "Slovenia": "SI", "Solomon Islands": "SB", "Somalia": "SO", "South Africa": "ZA", "South Korea": "KR",
+            "South Sudan": "SS", "Spain": "ES", "Sri Lanka": "LK", "Sudan": "SD", "Suriname": "SR",
+            "Sweden": "SE", "Switzerland": "CH", "Syria": "SY", "Taiwan": "TW", "Tajikistan": "TJ",
+            "Tanzania": "TZ", "Thailand": "TH", "Timor-Leste": "TL", "Togo": "TG", "Tonga": "TO",
+            "Trinidad and Tobago": "TT", "Tunisia": "TN", "Turkey": "TR", "Turkmenistan": "TM", "Tuvalu": "TV",
+            "Uganda": "UG", "Ukraine": "UA", "United Arab Emirates": "AE", "United Kingdom": "GB", "United States": "US",
+            "Uruguay": "UY", "Uzbekistan": "UZ", "Vanuatu": "VU", "Vatican City": "VA", "Venezuela": "VE",
+            "Vietnam": "VN", "Yemen": "YE", "Zambia": "ZM", "Zimbabwe": "ZW"
+        };
         const SORTED_COUNTRY_LIST = Object.keys(COUNTRY_CODES).sort();
         const NORMALIZED_COUNTRY_CODES = Object.keys(COUNTRY_CODES).reduce((acc, key) => { acc[key.toLowerCase()] = COUNTRY_CODES[key]; return acc; }, {});
 
@@ -105,14 +148,14 @@
         const NEXT_WORKFLOW_STEP = { 'Draft': 'Diagnostic', 'Waiting PO': 'Proceed Repair', 'Proceed Repair': 'Repairing', 'Repair Completed': 'QC', 'Repair Failed': 'QC', 'QC': 'Delivery Arrangement', 'Delivery Arrangement': 'Delivered', 'Delivered': null };
 
         const ROLE_PERMISSIONS = {
-            superadmin: { canReceiveItem: true, canEditAdminPanel: true, canViewReport: true, canEditReport: true, canViewDiagnostic: true, canEditDiagnostic: true, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: true, canSeeFullCustomerInfo: true, isDeliveryRole: false, canQC: true, canManageUsers: true, canTransferDepartment: true, allowedStatuses: WORKFLOW_STEPS },
-            admin: { canReceiveItem: true, canEditAdminPanel: true, canViewReport: true, canEditReport: false, canViewDiagnostic: true, canEditDiagnostic: false, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: true, canSeeFullCustomerInfo: true, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: true, allowedStatuses: WORKFLOW_STEPS },
-            engineer: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: true, canViewDiagnostic: true, canEditDiagnostic: true, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: true, allowedStatuses: ['Diagnostic', 'Proceed Repair', 'Repairing', 'Repair Completed', 'Repair Failed', 'QC'] },
-            mechanical: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: true, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: true, allowedStatuses: ['Diagnostic', 'Proceed Repair', 'Repairing', 'Repair Completed', 'Repair Failed', 'QC'] },
-            qc: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: false, canViewDiagnostic: true, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: true, canManageUsers: false, canTransferDepartment: false, allowedStatuses: ['QC', 'Repairing', 'Delivery Arrangement'] },
-            packaging: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: false, canEditReport: false, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: false, canSeeFullCustomerInfo: true, isDeliveryRole: true, canQC: false, canManageUsers: false, canTransferDepartment: false, allowedStatuses: ['Delivery Arrangement', 'Delivered'] },
-            logistic: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: false, canEditReport: false, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: false, canSeeFullCustomerInfo: true, isDeliveryRole: true, canQC: false, canManageUsers: false, canTransferDepartment: false, allowedStatuses: ['Delivery Arrangement', 'Delivered'] },
-            purchaser: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: false, canEditReport: false, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: true, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: false, allowedStatuses: [] }
+            superadmin: { canReceiveItem: true, canEditAdminPanel: true, canViewReport: true, canEditReport: true, canViewDiagnostic: true, canEditDiagnostic: true, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: true, canSeeFullCustomerInfo: true, isDeliveryRole: false, canQC: true, canManageUsers: true, canTransferDepartment: true, canDeleteRecords: true, allowedStatuses: WORKFLOW_STEPS },
+            admin: { canReceiveItem: true, canEditAdminPanel: true, canViewReport: true, canEditReport: false, canViewDiagnostic: true, canEditDiagnostic: false, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: true, canSeeFullCustomerInfo: true, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: true, canDeleteRecords: true, allowedStatuses: WORKFLOW_STEPS },
+            engineer: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: true, canViewDiagnostic: true, canEditDiagnostic: true, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: true, canDeleteRecords: false, allowedStatuses: ['Diagnostic', 'Proceed Repair', 'Repairing', 'Repair Completed', 'Repair Failed', 'QC'] },
+            mechanical: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: true, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: true, canDeleteRecords: false, allowedStatuses: ['Diagnostic', 'Proceed Repair', 'Repairing', 'Repair Completed', 'Repair Failed', 'QC'] },
+            qc: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: false, canViewDiagnostic: true, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: true, canManageUsers: false, canTransferDepartment: false, canDeleteRecords: false, allowedStatuses: ['QC', 'Repairing', 'Delivery Arrangement'] },
+            packaging: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: false, canEditReport: false, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: false, canSeeFullCustomerInfo: true, isDeliveryRole: true, canQC: false, canManageUsers: false, canTransferDepartment: false, canDeleteRecords: false, allowedStatuses: ['Delivery Arrangement', 'Delivered'] },
+            logistic: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: false, canEditReport: false, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: false, canSeeFullCustomerInfo: true, isDeliveryRole: true, canQC: false, canManageUsers: false, canTransferDepartment: false, canDeleteRecords: false, allowedStatuses: ['Delivery Arrangement', 'Delivered'] },
+            purchaser: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: false, canEditReport: false, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: true, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: false, canDeleteRecords: false, allowedStatuses: [] }
         };
 
         const ROLE_LABELS = {
@@ -419,6 +462,50 @@
             );
         };
 
+        const SearchableCountrySelect = ({ value, onChange, disabled }) => {
+            const [searchTerm, setSearchTerm] = useState('');
+            const [isOpen, setIsOpen] = useState(false);
+            const dropdownRef = useRef(null);
+
+            const filteredCountries = SORTED_COUNTRY_LIST.filter(c => c.toLowerCase().includes(searchTerm.toLowerCase()));
+
+            useEffect(() => {
+                const handleClickOutside = (e) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setIsOpen(false); };
+                document.addEventListener("mousedown", handleClickOutside);
+                return () => document.removeEventListener("mousedown", handleClickOutside);
+            }, []);
+
+            return (
+                <div className="relative" ref={dropdownRef}>
+                    <div className="relative">
+                        <i className="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400 text-xs"></i>
+                        <input
+                            disabled={disabled}
+                            type="text"
+                            placeholder="Search country..."
+                            value={isOpen ? searchTerm : (value || '')}
+                            onFocus={() => { if (disabled) return; setIsOpen(true); setSearchTerm(''); }}
+                            onChange={(e) => { setSearchTerm(e.target.value); setIsOpen(true); }}
+                            className="w-full border border-slate-300 rounded pl-9 pr-4 py-2.5 text-sm bg-white outline-none disabled:opacity-50 disabled:bg-slate-50"
+                        />
+                    </div>
+                    {isOpen && (
+                        <ul className="absolute z-40 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto text-sm custom-scrollbar">
+                            {filteredCountries.length === 0 ? (
+                                <li className="p-3 text-slate-500 text-xs text-center italic">No matching country found.</li>
+                            ) : (
+                                filteredCountries.map(c => (
+                                    <li key={c} onClick={() => { onChange(c); setIsOpen(false); setSearchTerm(''); }} className="px-3 py-2 hover:bg-brand-50 cursor-pointer border-b border-slate-100 last:border-0 transition">
+                                        {c} <span className="text-slate-400 font-mono text-[10px]">{COUNTRY_CODES[c]}</span>
+                                    </li>
+                                ))
+                            )}
+                        </ul>
+                    )}
+                </div>
+            );
+        };
+
         const PURCHASE_PLATFORMS = ['Shopee', 'element14', 'DigiKey', 'RS Components', 'Local Supplier', 'Other'];
         const PURCHASE_REQUEST_STATUSES = ['Requested', 'Ordered', 'Shipped', 'Delivered', 'Cancelled'];
         const PURCHASE_STATUS_STYLE = {
@@ -713,7 +800,7 @@
             </div>
         );
 
-        const Dashboard = ({ repairs, perms, userRole, currentUserName, onOpenRepair, navigateTo, viewersByJob, currentTabId, onRequestEdit }) => {
+        const Dashboard = ({ repairs, perms, userRole, currentUserName, onOpenRepair, navigateTo, viewersByJob, currentTabId, onRequestEdit, onDeleteRepair }) => {
             const [searchTerm, setSearchTerm] = useState('');
             const [statusFilter, setStatusFilter] = useState('All');
             const [departmentFilter, setDepartmentFilter] = useState('All');
@@ -768,13 +855,24 @@
             const awaitingPartCount = repairs.filter(r => r.awaitingPart).length;
             const colCount = perms.isDeliveryRole ? 8 : 9;
 
-            const renderRepairRow = (repair, indented) => {
+            // Cycled per PO group so adjacent groups on the dashboard are visually
+            // distinguishable from each other, not just from ungrouped rows.
+            const PO_GROUP_PALETTE = [
+                { border: 'border-l-brand-500', tint: 'bg-brand-50/50', headerBg: 'bg-brand-100/60', headerBorder: 'border-brand-300' },
+                { border: 'border-l-circuit-500', tint: 'bg-circuit-50/50', headerBg: 'bg-circuit-100/60', headerBorder: 'border-circuit-300' },
+                { border: 'border-l-signal-500', tint: 'bg-signal-50/50', headerBg: 'bg-signal-100/60', headerBorder: 'border-signal-300' },
+                { border: 'border-l-emerald-500', tint: 'bg-emerald-50/50', headerBg: 'bg-emerald-100/60', headerBorder: 'border-emerald-300' },
+                { border: 'border-l-purple-500', tint: 'bg-purple-50/50', headerBg: 'bg-purple-100/60', headerBorder: 'border-purple-300' },
+                { border: 'border-l-amber-500', tint: 'bg-amber-50/50', headerBg: 'bg-amber-100/60', headerBorder: 'border-amber-300' },
+            ];
+
+            const renderRepairRow = (repair, indented, groupStyle) => {
                 const aging = getAgingBadge(repair);
                 const pct = getProgressPercent(repair);
                 const failed = repair.status === 'Repair Failed' || (repair.statusHistory || []).some(h => h.status === 'Repair Failed');
                 return (
-                    <tr key={repair.id} className={`hover:bg-slate-50 transition group ${repair.pendingElectronicPickup ? 'bg-signal-50/40' : ''} ${repair.awaitingPart ? 'bg-amber-50/40' : ''}`}>
-                        <td className={`p-4 font-mono text-sm font-bold text-brand-800 ${indented ? 'pl-10' : ''}`}>
+                    <tr key={repair.id} className={`hover:bg-slate-50 transition group ${groupStyle ? groupStyle.tint : ''} ${repair.pendingElectronicPickup ? 'bg-signal-50/40' : ''} ${repair.awaitingPart ? 'bg-amber-50/40' : ''}`}>
+                        <td className={`p-4 font-mono text-sm font-bold text-brand-800 ${indented ? `pl-9 border-l-4 ${groupStyle ? groupStyle.border : 'border-l-slate-200'}` : ''}`}>
                             {repair.id}
                             {repair.warrantyType === 'W' && <span className="ml-2 text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase align-middle">Warranty</span>}
                             {repair.pendingElectronicPickup && <span className="ml-2 text-[10px] bg-signal-100 text-signal-700 px-1.5 py-0.5 rounded font-bold uppercase align-middle"><i className="fa-solid fa-right-left mr-1"></i>New Transfer</span>}
@@ -817,9 +915,18 @@
                         </td>
                         <td className="p-4">{aging && <span className={`px-2 py-1 rounded text-[11px] font-bold ${aging.cls}`}>{aging.days}d</span>}</td>
                         <td className="p-4 text-right">
-                            <a href={`?job=${encodeURIComponent(repair.id)}`} onClick={(e) => { e.preventDefault(); onOpenRepair(repair); }} className="inline-block bg-white border border-slate-300 hover:border-brand-500 hover:text-brand-700 text-slate-700 px-4 py-2 rounded text-xs font-bold transition shadow-sm">
-                                Manage <i className="fa-solid fa-arrow-right ml-1"></i>
-                            </a>
+                            <div className="flex items-center justify-end gap-2">
+                                {perms.canDeleteRecords && (
+                                    <button
+                                        onClick={() => { if (window.confirm(`Permanently delete job ${repair.id} (${repair.customerCompany} — ${repair.itemName})? This cannot be undone.`)) onDeleteRepair(repair.id); }}
+                                        title="Delete this job permanently"
+                                        className="bg-white border border-slate-300 hover:border-red-500 hover:text-red-600 text-slate-400 w-9 h-9 rounded text-xs transition shadow-sm shrink-0"
+                                    ><i className="fa-solid fa-trash-can"></i></button>
+                                )}
+                                <a href={`?job=${encodeURIComponent(repair.id)}`} onClick={(e) => { e.preventDefault(); onOpenRepair(repair); }} className="inline-block bg-white border border-slate-300 hover:border-brand-500 hover:text-brand-700 text-slate-700 px-4 py-2 rounded text-xs font-bold transition shadow-sm whitespace-nowrap">
+                                    Manage <i className="fa-solid fa-arrow-right ml-1"></i>
+                                </a>
+                            </div>
                         </td>
                     </tr>
                 );
@@ -922,22 +1029,26 @@
                             <tbody className="divide-y divide-slate-100">
                                 {paginatedDisplay.length === 0 ? (
                                     <tr><td colSpan={colCount} className="p-8 text-center text-slate-400 italic">No work orders match your filters.</td></tr>
-                                ) : paginatedDisplay.map(entry => {
+                                ) : (() => {
+                                    let groupIndex = -1;
+                                    return paginatedDisplay.map(entry => {
                                     if (entry.kind === 'single') return renderRepairRow(entry.repair, false);
 
+                                    groupIndex++;
+                                    const groupStyle = PO_GROUP_PALETTE[groupIndex % PO_GROUP_PALETTE.length];
                                     const isCollapsed = collapsedGroups.has(entry.po);
                                     const groupAvg = Math.round(entry.items.reduce((sum, r) => sum + getProgressPercent(r), 0) / entry.items.length);
                                     return (
                                         <React.Fragment key={`po-${entry.po}`}>
-                                            <tr className="bg-slate-100/70 border-y border-slate-200">
-                                                <td colSpan={colCount} className="p-0">
-                                                    <button onClick={() => toggleGroup(entry.po)} className="w-full flex items-center justify-between gap-4 px-4 py-3 text-left hover:bg-slate-200/40 transition">
+                                            <tr className={`${groupStyle.headerBg} border-y-2 ${groupStyle.headerBorder}`}>
+                                                <td colSpan={colCount} className={`p-0 border-l-4 ${groupStyle.border}`}>
+                                                    <button onClick={() => toggleGroup(entry.po)} className="w-full flex items-center justify-between gap-4 px-4 py-3 text-left hover:brightness-95 transition">
                                                         <div className="flex items-center gap-3 min-w-0">
-                                                            <i className={`fa-solid fa-chevron-right text-slate-400 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}></i>
-                                                            <i className="fa-solid fa-layer-group text-brand-600"></i>
+                                                            <i className={`fa-solid fa-chevron-right text-slate-500 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}></i>
+                                                            <i className="fa-solid fa-layer-group text-brand-700"></i>
                                                             <span className="font-mono text-xs font-black text-brand-800 bg-white border border-slate-300 rounded px-2 py-1">{entry.po}</span>
                                                             <span className="font-bold text-slate-800 text-sm truncate">{entry.items[0].customerCompany}</span>
-                                                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">{entry.items.length} items</span>
+                                                            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wide whitespace-nowrap">{entry.items.length} items</span>
                                                         </div>
                                                         <div className="flex items-center gap-3 w-56 shrink-0">
                                                             <ProgressBar percent={groupAvg} thin />
@@ -946,10 +1057,12 @@
                                                     </button>
                                                 </td>
                                             </tr>
-                                            {!isCollapsed && entry.items.map(r => renderRepairRow(r, true))}
+                                            {!isCollapsed && entry.items.map(r => renderRepairRow(r, true, groupStyle))}
+                                            <tr aria-hidden="true"><td colSpan={colCount} className="p-0 h-2 bg-slate-50"></td></tr>
                                         </React.Fragment>
                                     );
-                                })}
+                                    });
+                                })()}
                             </tbody>
                         </table>
                         </div>
@@ -976,6 +1089,20 @@
                     customerPo: '', itemName: '', brand: '', model: '', serial: '', faultDescription: '',
                     photos: [], documents: []
                 });
+
+                // Bulk mode: receiving many items under one PO shouldn't mean re-typing the
+                // same customer/PO/department N times -- everything above stays shared via
+                // `formData`, only the per-item fields below become a repeatable list.
+                const [bulkMode, setBulkMode] = useState(false);
+                const [bulkItems, setBulkItems] = useState([{ itemName: '', brand: '', model: '', serial: '' }]);
+                const addBulkRow = () => {
+                    setBulkItems(prev => {
+                        const last = prev[prev.length - 1];
+                        return [...prev, { itemName: '', brand: last ? last.brand : '', model: '', serial: '' }];
+                    });
+                };
+                const updateBulkItem = (idx, patch) => setBulkItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it));
+                const removeBulkRow = (idx) => setBulkItems(prev => prev.filter((_, i) => i !== idx));
 
                 const handlePhotoUpload = (e) => {
                     const files = Array.from(e.target.files);
@@ -1008,26 +1135,38 @@
                     e.target.value = null;
                 };
 
+                const buildRepairRecord = (itemFields, jobId) => ({
+                    ...formData, ...itemFields, id: jobId, status: 'Draft', report: '', partsUsed: [], deliveryNotes: '',
+                    assignedEngineer: '', mechanicalReports: [], transferredFromMechanical: false, pendingElectronicPickup: false, awaitingPart: false, awaitingPartRequestIds: [],
+                    deliveryInfo: { courier: '', trackingNumber: '', shippedDate: '', packedBy: '' },
+                    qcChecklist: { visualConfirmed: false, functionalConfirmed: false, calibrationConfirmed: false, documentationConfirmed: false, packagingConfirmed: false, result: '', notes: '', inspectorName: '', inspectorRole: '', timestamp: '' },
+                    statusHistory: [{ status: 'Draft', timestamp: new Date().toISOString(), by: userRole, byName: currentUserName, type: 'status' }],
+                    preRepairDiagnostic: { internal: { ...EMPTY_DIAG_SIDE }, customer: { ...EMPTY_DIAG_SIDE } },
+                    diagnosticReport: { visualInspection: '', initialFindings: '', correctiveAction: '', testResults: '', photos: [] },
+                    customerReport: { visualInspection: '', initialFindings: '', correctiveAction: '', testResults: '', photos: [], partsUsed: [] }
+                });
+
                 const handleSubmit = (e) => {
                     e.preventDefault();
                     const cCode = NORMALIZED_COUNTRY_CODES[(formData.customerCountry || 'Malaysia').toLowerCase()] || 'MY';
                     const dateFormatted = formData.dateReceived.replaceAll('-', '').substring(2);
-                    const jobId = `TCS_${cCode}_${dateFormatted}_${101 + repairs.length}${formData.warrantyType === 'W' ? '_W' : ''}`;
+                    const makeJobId = (offset) => `TCS_${cCode}_${dateFormatted}_${101 + repairs.length + offset}${formData.warrantyType === 'W' ? '_W' : ''}`;
 
                     if (isNewCustomer && formData.customerCompany) {
                         setCustomers([...customers, { id: `CUST-0${customers.length + 1}`, company: formData.customerCompany, name: formData.customerName, phone: formData.customerPhone, email: formData.customerEmail, street: formData.customerStreet, postcode: formData.customerPostcode, city: formData.customerCity, state: formData.customerState, country: formData.customerCountry }]);
                     }
-                    const newRepair = {
-                        ...formData, id: jobId, status: 'Draft', report: '', partsUsed: [], deliveryNotes: '',
-                        assignedEngineer: '', mechanicalReports: [], transferredFromMechanical: false, pendingElectronicPickup: false, awaitingPart: false, awaitingPartRequestIds: [],
-                        deliveryInfo: { courier: '', trackingNumber: '', shippedDate: '', packedBy: '' },
-                        qcChecklist: { visualConfirmed: false, functionalConfirmed: false, calibrationConfirmed: false, documentationConfirmed: false, packagingConfirmed: false, result: '', notes: '', inspectorName: '', inspectorRole: '', timestamp: '' },
-                        statusHistory: [{ status: 'Draft', timestamp: new Date().toISOString(), by: userRole, byName: currentUserName, type: 'status' }],
-                        preRepairDiagnostic: { internal: { ...EMPTY_DIAG_SIDE }, customer: { ...EMPTY_DIAG_SIDE } },
-                        diagnosticReport: { visualInspection: '', initialFindings: '', correctiveAction: '', testResults: '', photos: [] },
-                        customerReport: { visualInspection: '', initialFindings: '', correctiveAction: '', testResults: '', photos: [], partsUsed: [] }
-                    };
-                    setRepairs([newRepair, ...repairs]);
+
+                    if (bulkMode) {
+                        const validItems = bulkItems.filter(it => it.itemName.trim() || it.brand.trim() || it.model.trim() || it.serial.trim());
+                        if (validItems.length === 0) { alert('Add at least one item before submitting.'); return; }
+                        const incomplete = validItems.some(it => !it.itemName.trim() || !it.brand.trim() || !it.serial.trim());
+                        if (incomplete) { alert('Every item row needs at least Equipment Description, OEM Brand, and Serial Number filled in (or remove the row).'); return; }
+                        const newRepairs = validItems.map((it, i) => buildRepairRecord({ itemName: it.itemName, brand: it.brand, model: it.model, serial: it.serial }, makeJobId(i)));
+                        setRepairs([...newRepairs, ...repairs]);
+                    } else {
+                        const newRepair = buildRepairRecord({ itemName: formData.itemName, brand: formData.brand, model: formData.model, serial: formData.serial }, makeJobId(0));
+                        setRepairs([newRepair, ...repairs]);
+                    }
                     navigateTo('dashboard');
                 };
 
@@ -1060,9 +1199,7 @@
                                         <div><label className="block text-xs font-bold text-slate-700 mb-1">Postal Code</label><input type="text" value={formData.customerPostcode} onChange={e => setFormData({...formData, customerPostcode: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-white" /></div>
                                         <div>
                                             <label className="block text-xs font-bold text-slate-700 mb-1">Country Registry</label>
-                                            <select value={formData.customerCountry} onChange={e => setFormData({...formData, customerCountry: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-white">
-                                                {SORTED_COUNTRY_LIST.map(country => (<option key={country} value={country}>{country}</option>))}
-                                            </select>
+                                            <SearchableCountrySelect value={formData.customerCountry} onChange={country => setFormData({...formData, customerCountry: country})} />
                                         </div>
                                     </div>
                                     <div><label className="block text-xs font-bold text-slate-700 mb-1">Purchase Order (PO) or Reference Tag</label><input type="text" value={formData.customerPo} onChange={e => setFormData({...formData, customerPo: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-white" /></div>
@@ -1096,16 +1233,61 @@
                                             <option value="W">Warranty Claim Execution</option>
                                         </select>
                                     </div>
-                                    <div className="md:col-span-2"><label className="block text-xs font-bold text-slate-700 mb-1">Equipment Description</label><input required type="text" value={formData.itemName} onChange={e => setFormData({...formData, itemName: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-white" placeholder="e.g., Main Logic Controller Module" /></div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-700 mb-1">OEM Brand</label>
-                                        <input list="brands-list" required type="text" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-white" />
-                                        <datalist id="brands-list">{POPULAR_BRANDS.map(b => <option key={b} value={b} />)}</datalist>
-                                    </div>
-                                    <div><label className="block text-xs font-bold text-slate-700 mb-1">Model / Part Number</label><input type="text" value={formData.model} onChange={e => setFormData({...formData, model: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-white" /></div>
-                                    <div className="md:col-span-2"><label className="block text-xs font-bold text-slate-700 mb-1">Serial Number (S/N)</label><input required type="text" value={formData.serial} onChange={e => setFormData({...formData, serial: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm font-mono bg-white" /></div>
+                                    {!bulkMode && (
+                                        <React.Fragment>
+                                            <div className="md:col-span-2"><label className="block text-xs font-bold text-slate-700 mb-1">Equipment Description</label><input required type="text" value={formData.itemName} onChange={e => setFormData({...formData, itemName: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-white" placeholder="e.g., Main Logic Controller Module" /></div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-700 mb-1">OEM Brand</label>
+                                                <input list="brands-list" required type="text" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-white" />
+                                            </div>
+                                            <div><label className="block text-xs font-bold text-slate-700 mb-1">Model / Part Number</label><input type="text" value={formData.model} onChange={e => setFormData({...formData, model: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-white" /></div>
+                                            <div className="md:col-span-2"><label className="block text-xs font-bold text-slate-700 mb-1">Serial Number (S/N)</label><input required type="text" value={formData.serial} onChange={e => setFormData({...formData, serial: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm font-mono bg-white" /></div>
+                                        </React.Fragment>
+                                    )}
                                 </div>
-                                <div><label className="block text-xs font-bold text-slate-700 mb-1">Client Reported Anomalies</label><textarea rows="3" value={formData.faultDescription} onChange={e => setFormData({...formData, faultDescription: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-white" placeholder="Detail the fault symptoms..."></textarea></div>
+                                <datalist id="brands-list">{POPULAR_BRANDS.map(b => <option key={b} value={b} />)}</datalist>
+
+                                <div className="pt-2 border-t border-slate-200">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <button type="button" onClick={() => setBulkMode(false)} className={`px-4 py-2 rounded-lg text-xs font-bold border transition ${!bulkMode ? 'bg-brand-800 text-white border-brand-800' : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'}`}><i className="fa-solid fa-box mr-1.5"></i>Single Item</button>
+                                        <button type="button" onClick={() => setBulkMode(true)} className={`px-4 py-2 rounded-lg text-xs font-bold border transition ${bulkMode ? 'bg-brand-800 text-white border-brand-800' : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'}`}><i className="fa-solid fa-boxes-stacked mr-1.5"></i>Multiple Items (Same PO)</button>
+                                    </div>
+
+                                    {bulkMode && (
+                                        <div className="space-y-3">
+                                            <p className="text-xs text-slate-500">The client, PO, and department above apply to every item below — just list what's different per item. One Work Order is created per row.</p>
+                                            <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                                                <table className="w-full text-left text-xs">
+                                                    <thead className="bg-slate-100 text-slate-600 uppercase text-[10px]">
+                                                        <tr>
+                                                            <th className="p-2 w-8">#</th>
+                                                            <th className="p-2">Equipment Description *</th>
+                                                            <th className="p-2">OEM Brand *</th>
+                                                            <th className="p-2">Model / Part No.</th>
+                                                            <th className="p-2">Serial No. *</th>
+                                                            <th className="p-2 w-8"></th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100 bg-white">
+                                                        {bulkItems.map((item, idx) => (
+                                                            <tr key={idx}>
+                                                                <td className="p-2 text-slate-400 font-mono">{idx + 1}</td>
+                                                                <td className="p-1"><input value={item.itemName} onChange={e => updateBulkItem(idx, { itemName: e.target.value })} className="w-full border border-slate-300 rounded p-1.5 text-xs" placeholder="e.g., HIACS Controller" /></td>
+                                                                <td className="p-1"><input list="brands-list" value={item.brand} onChange={e => updateBulkItem(idx, { brand: e.target.value })} className="w-full border border-slate-300 rounded p-1.5 text-xs" /></td>
+                                                                <td className="p-1"><input value={item.model} onChange={e => updateBulkItem(idx, { model: e.target.value })} className="w-full border border-slate-300 rounded p-1.5 text-xs" /></td>
+                                                                <td className="p-1"><input value={item.serial} onChange={e => updateBulkItem(idx, { serial: e.target.value })} className="w-full border border-slate-300 rounded p-1.5 text-xs font-mono" /></td>
+                                                                <td className="p-1 text-center">{bulkItems.length > 1 && <button type="button" onClick={() => removeBulkRow(idx)} className="text-red-500 hover:text-red-700 p-1"><i className="fa-solid fa-trash-can"></i></button>}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            <button type="button" onClick={addBulkRow} className="bg-brand-800 hover:bg-brand-900 text-white px-3 py-1.5 rounded text-xs font-bold shadow-sm"><i className="fa-solid fa-plus mr-1.5"></i>Add Item Row</button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div><label className="block text-xs font-bold text-slate-700 mb-1">Client Reported Anomalies {bulkMode && '(applies to all items above)'}</label><textarea rows="3" value={formData.faultDescription} onChange={e => setFormData({...formData, faultDescription: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-white" placeholder="Detail the fault symptoms..."></textarea></div>
 
                                 <div className="pt-4 border-t border-slate-200">
                                     <div className="flex justify-between items-center mb-3">
@@ -1152,7 +1334,7 @@
 
                             <div className="flex justify-end pt-4">
                                 <button type="button" onClick={() => navigateTo('dashboard')} className="text-slate-600 font-semibold px-6 py-3 mr-4 hover:bg-slate-100 rounded transition">Discard</button>
-                                <button type="submit" className="bg-brand-800 text-white px-8 py-3 rounded shadow-md text-sm font-bold hover:bg-brand-900 transition flex items-center"><i className="fa-solid fa-file-signature mr-2"></i> Generate Draft Job</button>
+                                <button type="submit" className="bg-brand-800 text-white px-8 py-3 rounded shadow-md text-sm font-bold hover:bg-brand-900 transition flex items-center"><i className="fa-solid fa-file-signature mr-2"></i> {bulkMode ? `Generate ${bulkItems.filter(it => it.itemName.trim() || it.brand.trim() || it.model.trim() || it.serial.trim()).length} Draft Job(s)` : 'Generate Draft Job'}</button>
                             </div>
                         </form>
                     </div>
@@ -1165,7 +1347,7 @@
         // when the photo preview overlay opens/closes). Nesting it inside App used to
         // cause the whole sub-tab state (active tab, edit buffers, etc.) to reset on
         // every unrelated App state change.
-        const ItemDetail = ({ repair, repairs, setRepairs, setSelectedRepair, perms, userRole, currentUserName, stock, setStock, navigateTo, setPreviewImage, loadData, onLogAudit, onCreateRequest, partRequests, viewersByJob, currentTabId, trackViewing, untrackViewing, onRequestEdit }) => {
+        const ItemDetail = ({ repair, repairs, setRepairs, setSelectedRepair, perms, userRole, currentUserName, stock, setStock, navigateTo, setPreviewImage, loadData, onLogAudit, onCreateRequest, partRequests, viewersByJob, currentTabId, trackViewing, untrackViewing, onRequestEdit, onDeleteRepair }) => {
                 const selectedRepair = repair;
                 const [activeSubTab, setActiveSubTab] = useState('workflow');
                 const [showPartRequestModal, setShowPartRequestModal] = useState(false);
@@ -1833,8 +2015,9 @@
                                         <div><label className="block text-xs font-bold text-slate-700 mb-1">City</label><input disabled={isLockedByOther} type="text" value={editData.customerCity} onChange={e => setEditData({...editData, customerCity: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-slate-50 disabled:opacity-50" /></div>
                                         <div><label className="block text-xs font-bold text-slate-700 mb-1">State / Province</label><input disabled={isLockedByOther} type="text" value={editData.customerState} onChange={e => setEditData({...editData, customerState: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-slate-50 disabled:opacity-50" /></div>
                                         <div><label className="block text-xs font-bold text-slate-700 mb-1">Postcode</label><input disabled={isLockedByOther} type="text" value={editData.customerPostcode} onChange={e => setEditData({...editData, customerPostcode: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-slate-50 disabled:opacity-50" /></div>
-                                        <div><label className="block text-xs font-bold text-slate-700 mb-1">Country</label><input disabled={isLockedByOther} type="text" value={editData.customerCountry} onChange={e => setEditData({...editData, customerCountry: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-slate-50 disabled:opacity-50" /></div>
+                                        <div><label className="block text-xs font-bold text-slate-700 mb-1">Country</label><SearchableCountrySelect disabled={isLockedByOther} value={editData.customerCountry} onChange={country => setEditData({...editData, customerCountry: country})} /></div>
                                     </div>
+                                    <div><label className="block text-xs font-bold text-slate-700 mb-1">Purchase Order (PO) / Reference Tag</label><input disabled={isLockedByOther} type="text" placeholder="Fill in if it was missed at intake" value={editData.customerPo || ''} onChange={e => setEditData({...editData, customerPo: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-slate-50 disabled:opacity-50" /></div>
                                 </div>
 
                                 <div className="space-y-5 pt-4 border-t border-slate-100">
@@ -1904,6 +2087,18 @@
 
                                 <div className="flex justify-end pt-6 border-t border-slate-100"><button disabled={isLockedByOther} type="submit" className="bg-brand-800 text-white px-8 py-3 rounded shadow-md text-sm font-bold hover:bg-brand-900 transition disabled:opacity-40 disabled:cursor-not-allowed"><i className="fa-solid fa-floppy-disk mr-2"></i> Commit Record Update</button></div>
                             </form>
+                        )}
+
+                        {activeSubTab === 'admin' && perms.canDeleteRecords && (
+                            <div className="bg-white p-8 rounded-xl shadow-sm border border-red-200 no-print">
+                                <h4 className="text-sm font-bold text-red-700 uppercase tracking-widest mb-2"><i className="fa-solid fa-triangle-exclamation mr-2"></i>Danger Zone</h4>
+                                <p className="text-xs text-slate-500 mb-4">Permanently delete this job record. This cannot be undone — use it only for jobs keyed in by mistake, not real work orders that just need correcting above.</p>
+                                <button
+                                    disabled={isLockedByOther}
+                                    onClick={() => { if (window.confirm(`Permanently delete job ${selectedRepair.id} (${selectedRepair.customerCompany} — ${selectedRepair.itemName})? This cannot be undone.`)) onDeleteRepair(selectedRepair.id); }}
+                                    className="bg-red-700 hover:bg-red-800 text-white px-6 py-2.5 rounded text-sm font-bold shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                ><i className="fa-solid fa-trash-can mr-2"></i>Delete This Job Permanently</button>
+                            </div>
                         )}
 
                         {activeSubTab === 'intake' && perms.canEditAdminPanel && (
@@ -3585,6 +3780,19 @@
                 setSelectedRepair(prev => (prev && prev.id === repairId) ? appendAuditEntry(prev, entry) : prev);
             };
 
+            // Permanent delete (admin/superadmin only, enforced again here since this can be
+            // called from more than one screen). Removes the row from Supabase directly —
+            // setRepairs' own diffing only ever upserts, it never deletes — then updates local
+            // state; every other connected tab/device picks up the removal via the realtime
+            // DELETE event without needing a refresh.
+            const deleteRepair = async (repairId) => {
+                if (!perms.canDeleteRecords) return;
+                const { error } = await supabase.from('repairs').delete().eq('id', repairId);
+                if (error) { alert(`Failed to delete: ${error.message}`); return; }
+                setRepairsState(prev => prev.filter(r => r.id !== repairId));
+                if (selectedRepair && selectedRepair.id === repairId) { setSelectedRepair(null); setActiveTab('dashboard'); setJobInUrl(null); }
+            };
+
             // New-part IDs are generated here (not by the backend) because the deductStock-style
             // fire-and-forget POST below runs with mode:'no-cors', so the response body can't be
             // read — the ID has to already be final before it's sent.
@@ -3779,7 +3987,7 @@
 
                     <main className="flex-1 h-screen overflow-y-auto relative pt-16 md:pt-0">
                         <div className="p-6 md:p-10 max-w-[1400px] mx-auto">
-                            {activeTab === 'dashboard' && <Dashboard repairs={repairs} perms={perms} userRole={userRole} currentUserName={currentUserName} onOpenRepair={onOpenRepair} navigateTo={navigateTo} viewersByJob={viewersByJob} currentTabId={TAB_ID} onRequestEdit={requestEditAccess} />}
+                            {activeTab === 'dashboard' && <Dashboard repairs={repairs} perms={perms} userRole={userRole} currentUserName={currentUserName} onOpenRepair={onOpenRepair} navigateTo={navigateTo} viewersByJob={viewersByJob} currentTabId={TAB_ID} onRequestEdit={requestEditAccess} onDeleteRepair={deleteRepair} />}
                             {activeTab === 'detail' && selectedRepair && (
                                 <ItemDetail
                                     repair={selectedRepair}
@@ -3802,6 +4010,7 @@
                                     trackViewing={trackViewing}
                                     untrackViewing={untrackViewing}
                                     onRequestEdit={requestEditAccess}
+                                    onDeleteRepair={deleteRepair}
                                 />
                             )}
                             {activeTab === 'new-repair' && <NewRepairForm repairs={repairs} setRepairs={setRepairs} customers={customers} setCustomers={setCustomers} navigateTo={navigateTo} setPreviewImage={setPreviewImage} userRole={userRole} currentUserName={currentUserName} />}
