@@ -291,6 +291,45 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+-- profiles: self-service profile photo
+-- ---------------------------------------------------------------------------
+alter table public.profiles add column if not exists avatar_url text;
+
+-- ---------------------------------------------------------------------------
+-- Storage: profile photos (public bucket - avatars are meant to be visible to
+-- anyone logged in, e.g. next to a name in an audit trail) and email
+-- attachments (private - only the mailbox owner can read/write their own).
+-- Safe to re-run: `on conflict do nothing` skips buckets that already exist.
+-- ---------------------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+insert into storage.buckets (id, name, public)
+values ('email-attachments', 'email-attachments', false)
+on conflict (id) do nothing;
+
+-- Every path in both buckets starts with the owning user's id as the first
+-- folder segment (e.g. "<uid>/avatar.jpg", "<uid>/<email-id>/invoice.pdf") -
+-- these policies just check that segment matches whoever is logged in.
+drop policy if exists "avatars_read_authenticated" on storage.objects;
+drop policy if exists "avatars_write_own_folder" on storage.objects;
+create policy "avatars_read_authenticated"
+  on storage.objects for select
+  using (bucket_id = 'avatars' and auth.role() = 'authenticated');
+
+create policy "avatars_write_own_folder"
+  on storage.objects for all
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text)
+  with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "email_attachments_own_folder" on storage.objects;
+create policy "email_attachments_own_folder"
+  on storage.objects for all
+  using (bucket_id = 'email-attachments' and (storage.foldername(name))[1] = auth.uid()::text)
+  with check (bucket_id = 'email-attachments' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ---------------------------------------------------------------------------
 -- Done. Next steps (see AI_FEATURE_SETUP.md / chat instructions):
 --  1. Create the first login accounts under Authentication -> Users -> Add user
 --     (or let the app's User Management screen do it once the admin-users

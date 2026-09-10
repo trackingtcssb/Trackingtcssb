@@ -17,6 +17,10 @@ import { decryptSecret } from './_lib/crypto.js';
 // a few syncs instead, advancing last_uid a bit further each time.
 const FIRST_SYNC_BACKFILL = 25;
 const MAX_MESSAGES_PER_SYNC = 60;
+// Attachments bigger than this are left out of a synced message entirely (noted via
+// `skippedAttachments`) rather than blowing up Storage usage or the function's time
+// budget on one oversized file.
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 export default async function handler(req, res) {
     setCorsHeaders(req, res);
@@ -69,20 +73,39 @@ export default async function handler(req, res) {
                     const messageId = message.envelope?.messageId || parsed.messageId || `uid-${message.uid}@${account.imap_host}`;
                     const fromAddr = (message.envelope?.from || []).map(a => a.address).filter(Boolean).join(', ') || parsed.from?.text || '';
                     const toAddr = (message.envelope?.to || []).map(a => a.address).filter(Boolean).join(', ') || parsed.to?.text || '';
+                    const ccAddr = (message.envelope?.cc || []).map(a => a.address).filter(Boolean).join(', ') || parsed.cc?.text || '';
                     const subject = message.envelope?.subject || parsed.subject || '(no subject)';
                     const date = message.envelope?.date || parsed.date || new Date();
                     const bodyText = parsed.text || '';
+                    const rowId = `${user.id}:${messageId}`;
+
+                    // Upload each attachment to private Storage (path starts with the
+                    // owner's own id, matching the RLS policy in schema.sql) rather than
+                    // stuffing raw file bytes into the emails.data jsonb column.
+                    let skippedAttachments = 0;
+                    const attachments = [];
+                    for (const [idx, att] of (parsed.attachments || []).entries()) {
+                        if (!att.content || att.content.length > MAX_ATTACHMENT_BYTES) { skippedAttachments++; continue; }
+                        const safeName = (att.filename || `attachment-${idx + 1}`).replace(/[\/\\]/g, '_');
+                        const path = `${user.id}/${encodeURIComponent(messageId)}/${idx}-${safeName}`;
+                        const { error: uploadErr } = await admin.storage
+                            .from('email-attachments')
+                            .upload(path, att.content, { contentType: att.contentType || 'application/octet-stream', upsert: true });
+                        if (uploadErr) { console.error('Attachment upload failed:', uploadErr); skippedAttachments++; continue; }
+                        attachments.push({ filename: safeName, contentType: att.contentType || 'application/octet-stream', size: att.content.length, path });
+                    }
 
                     rows.push({
-                        id: `${user.id}:${messageId}`,
+                        id: rowId,
                         owner_id: user.id,
                         data: {
                             messageId, uid: message.uid, direction: 'in',
-                            from: fromAddr, to: toAddr, subject,
+                            from: fromAddr, to: toAddr, cc: ccAddr, subject,
                             date: date.toISOString(),
                             snippet: bodyText.slice(0, 240),
                             bodyText, bodyHtml: parsed.html || null,
                             isRead: message.flags?.has('\\Seen') || false,
+                            attachments, skippedAttachments,
                         },
                     });
                 }
