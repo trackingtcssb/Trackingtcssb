@@ -72,6 +72,10 @@
         // this with the function's full URL, e.g. "https://your-app.vercel.app/api/polish-report".
         const POLISH_REPORT_ENDPOINT = "/api/polish-report";
         const ADMIN_USERS_ENDPOINT = "/api/admin-users";
+        const EMAIL_ACCOUNT_ENDPOINT = "/api/email-account";
+        const EMAIL_SYNC_ENDPOINT = "/api/email-sync";
+        const EMAIL_SEND_ENDPOINT = "/api/email-send";
+        const EMAIL_SYNC_INTERVAL_MS = 3 * 60 * 1000; // poll for new mail every 3 minutes while the Email tab's data is loaded
 
         // Supabase holds real login accounts (Supabase Auth) plus the `repairs` and
         // `customers` tables — the only two pieces of app data that didn't already have a
@@ -3971,6 +3975,473 @@
             );
         };
 
+        // Lets a logged-in user connect their own @tcssb.com mailbox (cPanel IMAP/SMTP)
+        // and, once connected, see new mail arrive and send mail from inside the app.
+        // The mailbox password is only ever sent to /api/email-account over HTTPS at
+        // connect time — it is never stored in this component's state afterward, and
+        // this component never receives it back from the server.
+        const callEmailApi = async (endpoint, payload) => {
+            const { data: { session } } = await supabase.auth.getSession();
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+                body: JSON.stringify(payload),
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+            return body;
+        };
+
+        // The "enable email" control — lives on the Profile page, not the Email tab
+        // itself, since a disconnected user has nothing to see on that tab yet.
+        // Connecting here is what makes the Email nav item appear at all (see
+        // App's NavLinks: it only renders when `emailAccount` is set).
+        const EmailAccountConnector = ({ account, setAccount, currentUserEmail }) => {
+            const [connecting, setConnecting] = useState(false);
+            const [connectError, setConnectError] = useState('');
+            const [disconnecting, setDisconnecting] = useState(false);
+            const [form, setForm] = useState({
+                email: currentUserEmail, password: '',
+                imapHost: 'mail.tcssb.com', imapPort: 993,
+                smtpHost: 'mail.tcssb.com', smtpPort: 465,
+            });
+
+            const handleConnect = async (e) => {
+                e.preventDefault();
+                setConnecting(true);
+                setConnectError('');
+                try {
+                    await callEmailApi(EMAIL_ACCOUNT_ENDPOINT, { action: 'connect', ...form });
+                    setAccount({ email: form.email, imap_host: form.imapHost, smtp_host: form.smtpHost, last_synced_at: null });
+                } catch (err) {
+                    setConnectError(err.message);
+                } finally {
+                    setConnecting(false);
+                }
+            };
+
+            const handleDisconnect = async () => {
+                if (!window.confirm('Disconnect this mailbox? Already-synced messages stay in the app; nothing new will come in until you reconnect.')) return;
+                setDisconnecting(true);
+                try {
+                    await callEmailApi(EMAIL_ACCOUNT_ENDPOINT, { action: 'disconnect' });
+                    setAccount(null);
+                } catch (err) {
+                    alert(err.message);
+                } finally {
+                    setDisconnecting(false);
+                }
+            };
+
+            if (account) {
+                return (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex items-center justify-between gap-3 flex-wrap">
+                        <div>
+                            <p className="text-sm font-bold text-emerald-800"><i className="fa-solid fa-circle-check mr-1.5"></i>Connected as {account.email}</p>
+                            <p className="text-xs text-emerald-700 mt-0.5">Open the <strong>Email</strong> tab in the sidebar to read and send mail.</p>
+                        </div>
+                        <button disabled={disconnecting} onClick={handleDisconnect} className="border border-emerald-300 text-emerald-800 hover:bg-emerald-100 px-4 py-2 rounded font-bold text-sm disabled:opacity-60 shrink-0">
+                            {disconnecting ? 'Disconnecting…' : 'Disconnect'}
+                        </button>
+                    </div>
+                );
+            }
+
+            return (
+                <form onSubmit={handleConnect} className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Email address</label>
+                        <input required type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="w-full border border-slate-300 rounded p-2.5 text-sm" placeholder="you@tcssb.com" />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">Mailbox password</label>
+                        <input required type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} className="w-full border border-slate-300 rounded p-2.5 text-sm" autoComplete="current-password" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">Incoming (IMAP) host</label>
+                            <input required value={form.imapHost} onChange={e => setForm(f => ({ ...f, imapHost: e.target.value }))} className="w-full border border-slate-300 rounded p-2.5 text-sm" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">IMAP port</label>
+                            <input required type="number" value={form.imapPort} onChange={e => setForm(f => ({ ...f, imapPort: e.target.value }))} className="w-full border border-slate-300 rounded p-2.5 text-sm" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">Outgoing (SMTP) host</label>
+                            <input required value={form.smtpHost} onChange={e => setForm(f => ({ ...f, smtpHost: e.target.value }))} className="w-full border border-slate-300 rounded p-2.5 text-sm" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-700 mb-1">SMTP port</label>
+                            <input required type="number" value={form.smtpPort} onChange={e => setForm(f => ({ ...f, smtpPort: e.target.value }))} className="w-full border border-slate-300 rounded p-2.5 text-sm" />
+                        </div>
+                    </div>
+                    {connectError && <p className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded p-2.5">{connectError}</p>}
+                    <button disabled={connecting} type="submit" className="w-full bg-brand-800 hover:bg-brand-900 text-white py-2.5 rounded font-bold text-sm shadow-md disabled:opacity-60">
+                        {connecting ? 'Connecting…' : 'Connect Mailbox'}
+                    </button>
+                </form>
+            );
+        };
+
+        // Formats a quoted-original block the way most mail clients do, used to seed
+        // Reply/Reply All/Forward bodies.
+        const quoteForReply = (msg) => {
+            const who = msg.direction === 'out' ? msg.to : msg.from;
+            const when = msg.date ? new Date(msg.date).toLocaleString() : '';
+            const lines = (msg.bodyText || msg.snippet || '').split('\n').map(l => `> ${l}`).join('\n');
+            return `\n\nOn ${when}, ${who} wrote:\n${lines}`;
+        };
+        const quoteForForward = (msg) => {
+            const when = msg.date ? new Date(msg.date).toLocaleString() : '';
+            return `\n\n---------- Forwarded message ----------\nFrom: ${msg.from || msg.to}\nDate: ${when}\nSubject: ${msg.subject}\nTo: ${msg.to}\n\n${msg.bodyText || msg.snippet || ''}`;
+        };
+
+        const EmailPage = ({ account, emails, setEmails, currentUserEmail, currentUserId, navigateTo }) => {
+            const [selectedId, setSelectedId] = useState(null);
+            const [composeOpen, setComposeOpen] = useState(false);
+            const [showCc, setShowCc] = useState(false);
+            const [compose, setCompose] = useState({ to: '', cc: '', subject: '', text: '', inReplyTo: '', attachments: [] });
+            const [uploadingCount, setUploadingCount] = useState(0);
+            const [sending, setSending] = useState(false);
+            const [sendError, setSendError] = useState('');
+
+            const openMessage = (msg) => {
+                setSelectedId(msg.id);
+                if (msg.direction === 'in' && !msg.isRead) {
+                    setEmails(prev => prev.map(m => m.id === msg.id ? { ...m, isRead: true } : m));
+                }
+            };
+
+            const startCompose = (draft) => {
+                setCompose({ to: '', cc: '', subject: '', text: '', inReplyTo: '', attachments: [], ...draft });
+                setShowCc(!!draft?.cc);
+                setSendError('');
+                setComposeOpen(true);
+            };
+
+            const handleReply = (msg) => startCompose({
+                to: msg.direction === 'out' ? msg.to : msg.from,
+                subject: /^re:/i.test(msg.subject || '') ? msg.subject : `Re: ${msg.subject || ''}`,
+                text: quoteForReply(msg), inReplyTo: msg.messageId,
+            });
+
+            const handleReplyAll = (msg) => {
+                const self = (currentUserEmail || '').toLowerCase();
+                const others = [msg.to, msg.cc].join(',').split(',').map(a => a.trim()).filter(Boolean)
+                    .filter(a => a.toLowerCase() !== self && a.toLowerCase() !== (msg.from || '').toLowerCase());
+                startCompose({
+                    to: msg.direction === 'out' ? msg.to : msg.from,
+                    cc: [...new Set(others)].join(', '),
+                    subject: /^re:/i.test(msg.subject || '') ? msg.subject : `Re: ${msg.subject || ''}`,
+                    text: quoteForReply(msg), inReplyTo: msg.messageId,
+                });
+            };
+
+            const handleForward = async (msg) => {
+                startCompose({
+                    subject: /^fwd:/i.test(msg.subject || '') ? msg.subject : `Fwd: ${msg.subject || ''}`,
+                    text: quoteForForward(msg),
+                });
+                // Carry attachments along by copying them into this user's own outbound
+                // folder (both paths live under the same owner, so the Storage RLS
+                // policy in schema.sql allows it) — the new message gets its own copies
+                // rather than pointing back at the original message's files.
+                for (const att of (msg.attachments || [])) {
+                    const destPath = `${currentUserId}/outbound/${Date.now()}-${att.filename}`;
+                    const { error } = await supabase.storage.from('email-attachments').copy(att.path, destPath);
+                    if (!error) {
+                        setCompose(c => ({ ...c, attachments: [...c.attachments, { name: att.filename, path: destPath, size: att.size }] }));
+                    }
+                }
+            };
+
+            const handleFilePick = async (e) => {
+                const files = Array.from(e.target.files || []);
+                e.target.value = '';
+                setUploadingCount(n => n + files.length);
+                for (const file of files) {
+                    const path = `${currentUserId}/outbound/${Date.now()}-${file.name}`;
+                    const { error } = await supabase.storage.from('email-attachments').upload(path, file);
+                    if (error) { alert(`Could not attach ${file.name}: ${error.message}`); }
+                    else { setCompose(c => ({ ...c, attachments: [...c.attachments, { name: file.name, path, size: file.size }] })); }
+                    setUploadingCount(n => n - 1);
+                }
+            };
+
+            const removeAttachment = (path) => {
+                setCompose(c => ({ ...c, attachments: c.attachments.filter(a => a.path !== path) }));
+                supabase.storage.from('email-attachments').remove([path]);
+            };
+
+            const downloadAttachment = async (att) => {
+                const { data, error } = await supabase.storage.from('email-attachments').createSignedUrl(att.path, 60);
+                if (error) { alert(`Could not open ${att.filename}: ${error.message}`); return; }
+                window.open(data.signedUrl, '_blank');
+            };
+
+            const handleSend = async (e) => {
+                e.preventDefault();
+                setSending(true);
+                setSendError('');
+                try {
+                    await callEmailApi(EMAIL_SEND_ENDPOINT, { ...compose, attachmentPaths: compose.attachments.map(a => a.path) });
+                    setComposeOpen(false);
+                } catch (err) {
+                    setSendError(err.message);
+                } finally {
+                    setSending(false);
+                }
+            };
+
+            if (!account) {
+                return (
+                    <div className="max-w-md mx-auto bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center">
+                        <p className="text-sm text-slate-500">No mailbox connected yet.</p>
+                        <button onClick={() => navigateTo('profile')} className="mt-4 bg-brand-800 hover:bg-brand-900 text-white px-5 py-2.5 rounded font-bold text-sm shadow-md">Go to My Profile</button>
+                    </div>
+                );
+            }
+
+            const sorted = [...emails].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+            const selected = sorted.find(m => m.id === selectedId) || null;
+
+            return (
+                <div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+                        <div>
+                            <h2 className="text-xl font-black text-slate-800"><i className="fa-solid fa-envelope mr-2 text-brand-700"></i>{account.email}</h2>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                                {account.last_synced_at ? `Last synced ${new Date(account.last_synced_at).toLocaleString()}` : 'Not synced yet — checking for mail…'}
+                            </p>
+                        </div>
+                        <button onClick={() => startCompose()} className="bg-brand-800 hover:bg-brand-900 text-white px-4 py-2 rounded font-bold text-sm shadow-md"><i className="fa-solid fa-pen mr-1.5"></i>Compose</button>
+                    </div>
+
+                    <div className="grid md:grid-cols-[minmax(0,320px)_1fr] gap-4">
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 divide-y divide-slate-100 max-h-[70vh] overflow-y-auto">
+                            {sorted.length === 0 && <p className="p-6 text-sm text-slate-400 text-center">No messages yet.</p>}
+                            {sorted.map(msg => (
+                                <button key={msg.id} onClick={() => openMessage(msg)} className={`w-full text-left p-3.5 hover:bg-slate-50 transition ${selectedId === msg.id ? 'bg-brand-50' : ''}`}>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <p className={`text-sm truncate ${!msg.isRead && msg.direction === 'in' ? 'font-black text-slate-900' : 'font-semibold text-slate-600'}`}>
+                                            {msg.direction === 'out' ? `To: ${msg.to}` : (msg.from || 'Unknown sender')}
+                                        </p>
+                                        {!msg.isRead && msg.direction === 'in' && <span className="w-2 h-2 rounded-full bg-brand-600 shrink-0"></span>}
+                                    </div>
+                                    <p className={`text-xs truncate mt-0.5 ${!msg.isRead && msg.direction === 'in' ? 'font-bold text-slate-800' : 'text-slate-500'}`}>{msg.subject}</p>
+                                    <p className="text-[11px] text-slate-400 mt-1">{msg.date ? new Date(msg.date).toLocaleString() : ''}{msg.attachments?.length ? <i className="fa-solid fa-paperclip ml-1.5"></i> : null}</p>
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 min-h-[300px]">
+                            {!selected && <p className="text-sm text-slate-400 text-center mt-20">Select a message to read it.</p>}
+                            {selected && (
+                                <div>
+                                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                                        <div>
+                                            <h3 className="text-lg font-black text-slate-800">{selected.subject}</h3>
+                                            <p className="text-xs text-slate-500 mt-1">
+                                                {selected.direction === 'out' ? `To: ${selected.to}` : `From: ${selected.from}`}
+                                                {selected.cc ? ` · Cc: ${selected.cc}` : ''} · {selected.date ? new Date(selected.date).toLocaleString() : ''}
+                                            </p>
+                                        </div>
+                                        <div className="flex gap-1.5 shrink-0">
+                                            <button onClick={() => handleReply(selected)} className="border border-slate-300 hover:bg-slate-50 px-3 py-1.5 rounded font-bold text-xs"><i className="fa-solid fa-reply mr-1"></i>Reply</button>
+                                            <button onClick={() => handleReplyAll(selected)} className="border border-slate-300 hover:bg-slate-50 px-3 py-1.5 rounded font-bold text-xs"><i className="fa-solid fa-reply-all mr-1"></i>Reply All</button>
+                                            <button onClick={() => handleForward(selected)} className="border border-slate-300 hover:bg-slate-50 px-3 py-1.5 rounded font-bold text-xs"><i className="fa-solid fa-share mr-1"></i>Forward</button>
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 pt-4 border-t border-slate-100 text-sm text-slate-700 whitespace-pre-wrap">{selected.bodyText || selected.snippet || '(no content)'}</div>
+                                    {!!selected.attachments?.length && (
+                                        <div className="mt-4 pt-4 border-t border-slate-100">
+                                            <p className="text-xs font-bold text-slate-500 mb-2">Attachments</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {selected.attachments.map(att => (
+                                                    <button key={att.path} onClick={() => downloadAttachment(att)} className="text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-200 rounded px-2.5 py-1.5">
+                                                        <i className="fa-solid fa-paperclip mr-1"></i>{att.filename} <span className="text-slate-400">({Math.ceil(att.size / 1024)} KB)</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {composeOpen && (
+                        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-lg font-black text-slate-800">{compose.inReplyTo ? 'Reply' : 'New Message'}</h3>
+                                    <button onClick={() => setComposeOpen(false)} className="text-slate-400 hover:text-slate-700"><i className="fa-solid fa-xmark text-xl"></i></button>
+                                </div>
+                                <form onSubmit={handleSend} className="space-y-3">
+                                    <div>
+                                        <div className="flex items-center justify-between">
+                                            <label className="block text-xs font-bold text-slate-700 mb-1">To</label>
+                                            {!showCc && <button type="button" onClick={() => setShowCc(true)} className="text-xs font-bold text-brand-700 hover:underline">Add Cc</button>}
+                                        </div>
+                                        <input required type="email" value={compose.to} onChange={e => setCompose(c => ({ ...c, to: e.target.value }))} className="w-full border border-slate-300 rounded p-2.5 text-sm" />
+                                    </div>
+                                    {showCc && (
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-700 mb-1">Cc</label>
+                                            <input type="email" multiple value={compose.cc} onChange={e => setCompose(c => ({ ...c, cc: e.target.value }))} className="w-full border border-slate-300 rounded p-2.5 text-sm" placeholder="comma-separated addresses" />
+                                        </div>
+                                    )}
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1">Subject</label>
+                                        <input required value={compose.subject} onChange={e => setCompose(c => ({ ...c, subject: e.target.value }))} className="w-full border border-slate-300 rounded p-2.5 text-sm" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1">Message</label>
+                                        <textarea required rows="6" value={compose.text} onChange={e => setCompose(c => ({ ...c, text: e.target.value }))} className="w-full border border-slate-300 rounded p-2.5 text-sm"></textarea>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-1">Attachments</label>
+                                        <input type="file" multiple onChange={handleFilePick} className="w-full text-xs" />
+                                        {!!compose.attachments.length && (
+                                            <div className="flex flex-wrap gap-2 mt-2">
+                                                {compose.attachments.map(att => (
+                                                    <span key={att.path} className="text-xs font-semibold text-slate-600 bg-slate-100 rounded px-2.5 py-1.5 flex items-center gap-1.5">
+                                                        {att.name}
+                                                        <button type="button" onClick={() => removeAttachment(att.path)} className="text-slate-400 hover:text-red-600"><i className="fa-solid fa-xmark"></i></button>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {uploadingCount > 0 && <p className="text-xs text-slate-400 mt-1">Uploading {uploadingCount} file(s)…</p>}
+                                    </div>
+                                    {sendError && <p className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded p-2.5">{sendError}</p>}
+                                    <button disabled={sending || uploadingCount > 0} type="submit" className="w-full bg-brand-800 hover:bg-brand-900 text-white py-2.5 rounded font-bold text-sm shadow-md disabled:opacity-60">
+                                        {sending ? 'Sending…' : 'Send'}
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const ProfilePage = ({ profile, setProfile, session, emailAccount, setEmailAccount, navigateTo }) => {
+            const [name, setName] = useState(profile?.name || '');
+            const [savingName, setSavingName] = useState(false);
+            const [nameSaved, setNameSaved] = useState(false);
+            const [uploadingAvatar, setUploadingAvatar] = useState(false);
+            const [avatarError, setAvatarError] = useState('');
+            const [newPassword, setNewPassword] = useState('');
+            const [confirmPassword, setConfirmPassword] = useState('');
+            const [savingPassword, setSavingPassword] = useState(false);
+            const [passwordMsg, setPasswordMsg] = useState({ type: '', text: '' });
+
+            const handleSaveName = async (e) => {
+                e.preventDefault();
+                setSavingName(true);
+                setNameSaved(false);
+                const { error } = await supabase.from('profiles').update({ name }).eq('id', profile.id);
+                if (!error) { setProfile(prev => ({ ...prev, name })); setNameSaved(true); }
+                else alert(error.message);
+                setSavingName(false);
+            };
+
+            const handleAvatarPick = async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (!file) return;
+                setAvatarError('');
+                setUploadingAvatar(true);
+                try {
+                    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+                    const path = `${profile.id}/avatar.${ext}`;
+                    const { error: uploadErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
+                    if (uploadErr) throw uploadErr;
+                    const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+                    // Cache-bust so the new photo shows immediately instead of the browser
+                    // reusing whatever it had cached for this same URL.
+                    const avatarUrl = `${data.publicUrl}?v=${Date.now()}`;
+                    const { error: updateErr } = await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', profile.id);
+                    if (updateErr) throw updateErr;
+                    setProfile(prev => ({ ...prev, avatar_url: avatarUrl }));
+                } catch (err) {
+                    setAvatarError(err.message);
+                } finally {
+                    setUploadingAvatar(false);
+                }
+            };
+
+            const handleChangePassword = async (e) => {
+                e.preventDefault();
+                setPasswordMsg({ type: '', text: '' });
+                if (newPassword.length < 8) { setPasswordMsg({ type: 'error', text: 'Password must be at least 8 characters.' }); return; }
+                if (newPassword !== confirmPassword) { setPasswordMsg({ type: 'error', text: 'Passwords do not match.' }); return; }
+                setSavingPassword(true);
+                const { error } = await supabase.auth.updateUser({ password: newPassword });
+                setSavingPassword(false);
+                if (error) { setPasswordMsg({ type: 'error', text: error.message }); return; }
+                setNewPassword(''); setConfirmPassword('');
+                setPasswordMsg({ type: 'success', text: 'Password updated.' });
+            };
+
+            return (
+                <div className="max-w-2xl mx-auto space-y-5">
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <h2 className="text-lg font-black text-slate-800 mb-4">My Profile</h2>
+                        <div className="flex items-center gap-4 mb-5">
+                            {profile?.avatar_url
+                                ? <img src={profile.avatar_url} alt="" className="w-16 h-16 rounded-full object-cover" />
+                                : <div className="w-16 h-16 rounded-full bg-brand-700 text-white text-xl font-black flex items-center justify-center">{(name || '?').charAt(0).toUpperCase()}</div>}
+                            <div>
+                                <label className="inline-block cursor-pointer text-xs font-bold text-brand-700 hover:underline">
+                                    {uploadingAvatar ? 'Uploading…' : 'Change photo'}
+                                    <input type="file" accept="image/*" onChange={handleAvatarPick} disabled={uploadingAvatar} className="hidden" />
+                                </label>
+                                {avatarError && <p className="text-xs text-red-600 mt-1">{avatarError}</p>}
+                            </div>
+                        </div>
+                        <form onSubmit={handleSaveName} className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Name</label>
+                                <input required value={name} onChange={e => { setName(e.target.value); setNameSaved(false); }} className="w-full border border-slate-300 rounded p-2.5 text-sm" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Email (login)</label>
+                                <input disabled value={session?.user?.email || ''} className="w-full border border-slate-200 bg-slate-50 text-slate-500 rounded p-2.5 text-sm" />
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button disabled={savingName} type="submit" className="bg-brand-800 hover:bg-brand-900 text-white px-5 py-2 rounded font-bold text-sm shadow-md disabled:opacity-60">{savingName ? 'Saving…' : 'Save Name'}</button>
+                                {nameSaved && <span className="text-xs font-bold text-emerald-700"><i className="fa-solid fa-check mr-1"></i>Saved</span>}
+                            </div>
+                        </form>
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <h2 className="text-lg font-black text-slate-800 mb-4">Change Password</h2>
+                        <form onSubmit={handleChangePassword} className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">New password</label>
+                                <input required type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full border border-slate-300 rounded p-2.5 text-sm" autoComplete="new-password" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Confirm new password</label>
+                                <input required type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full border border-slate-300 rounded p-2.5 text-sm" autoComplete="new-password" />
+                            </div>
+                            {passwordMsg.text && <p className={`text-xs font-bold rounded p-2.5 border ${passwordMsg.type === 'error' ? 'text-red-600 bg-red-50 border-red-200' : 'text-emerald-700 bg-emerald-50 border-emerald-200'}`}>{passwordMsg.text}</p>}
+                            <button disabled={savingPassword} type="submit" className="bg-brand-800 hover:bg-brand-900 text-white px-5 py-2 rounded font-bold text-sm shadow-md disabled:opacity-60">{savingPassword ? 'Saving…' : 'Update Password'}</button>
+                        </form>
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <h2 className="text-lg font-black text-slate-800 mb-1">Email Integration</h2>
+                        <p className="text-sm text-slate-500 mb-4">Optional — connect your own @tcssb.com mailbox to read and send mail from inside the app. Uses your mailbox's IMAP/SMTP settings (from cPanel), not a shared inbox; only you see mail synced with your own credentials.</p>
+                        <EmailAccountConnector account={emailAccount} setAccount={setEmailAccount} currentUserEmail={session?.user?.email || ''} />
+                    </div>
+                </div>
+            );
+        };
+
         function App() {
             // --- Auth state -------------------------------------------------------
             // `session` starts `undefined` (haven't checked yet) so we can tell that
@@ -4023,6 +4494,12 @@
             // as read-only history so past purchases don't vanish from the list.
             const [purchaseRequests, setPurchaseRequestsState] = useState([]);
             const [legacyPartRequests, setLegacyPartRequests] = useState([]);
+            // Each user's own connected @tcssb.com mailbox (null = not connected yet) and the
+            // messages synced from it. Both are private to that user — see the RLS policies
+            // on email_accounts/emails in supabase/schema.sql.
+            const [emailAccount, setEmailAccount] = useState(null);
+            const [emails, setEmailsState] = useState([]);
+            const unreadEmailCount = useMemo(() => emails.filter(e => e.direction === 'in' && !e.isRead).length, [emails]);
             const partRequests = useMemo(
                 () => [...purchaseRequests, ...legacyPartRequests.filter(l => !purchaseRequests.some(p => p.id === l.id))],
                 [purchaseRequests, legacyPartRequests]
@@ -4059,7 +4536,9 @@
                     supabase.from('customers').select('id, data'),
                     supabase.from('profiles').select('*'),
                     supabase.from('purchase_requests').select('id, data'),
-                ]).then(([repairsRes, customersRes, profilesRes, purchaseRes]) => {
+                    supabase.from('email_accounts').select('email, imap_host, smtp_host, last_synced_at').maybeSingle(),
+                    supabase.from('emails').select('id, data'),
+                ]).then(([repairsRes, customersRes, profilesRes, purchaseRes, emailAccountRes, emailsRes]) => {
                     if (cancelled) return;
                     if (repairsRes.error || customersRes.error || profilesRes.error) {
                         setDataError('Failed to load work orders, customers, or user accounts from the database.');
@@ -4073,6 +4552,12 @@
                     // the rest of the app — the page still works, just without purchase history.
                     if (purchaseRes.error) console.error('Failed to load purchase requests:', purchaseRes.error);
                     else setPurchaseRequestsState((purchaseRes.data || []).map(row => ({ ...row.data, id: row.id })));
+                    // Same for email_accounts/emails (schema.sql not run yet, or the user hasn't
+                    // connected a mailbox) — the Email tab just shows its own connect prompt.
+                    if (emailAccountRes.error) console.error('Failed to load email account:', emailAccountRes.error);
+                    else setEmailAccount(emailAccountRes.data || null);
+                    if (emailsRes.error) console.error('Failed to load emails:', emailsRes.error);
+                    else setEmailsState((emailsRes.data || []).map(row => ({ ...row.data, id: row.id })));
                     setDataLoading(false);
                 });
                 return () => { cancelled = true; };
@@ -4104,9 +4589,30 @@
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'repairs' }, applyRemoteRow(setRepairsState))
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, applyRemoteRow(setCustomersState))
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_requests' }, applyRemoteRow(setPurchaseRequestsState))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'emails' }, applyRemoteRow(setEmailsState))
                     .subscribe();
                 return () => { supabase.removeChannel(channel); };
             }, [profile?.id]);
+
+            // Pull new mail from the user's connected mailbox on a timer, for as long as
+            // they're logged in — not only while the Email tab is open — so the unread
+            // badge in the sidebar stays current even if they're working elsewhere in the
+            // app. Skips entirely (no interval, no request) until a mailbox is connected.
+            useEffect(() => {
+                if (!profile || !emailAccount) return;
+                const syncEmail = async () => {
+                    try {
+                        const { data: { session: liveSession } } = await supabase.auth.getSession();
+                        await fetch(EMAIL_SYNC_ENDPOINT, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${liveSession?.access_token || ''}` },
+                        });
+                    } catch (e) { console.error('Email sync failed:', e); }
+                };
+                syncEmail();
+                const interval = setInterval(syncEmail, EMAIL_SYNC_INTERVAL_MS);
+                return () => clearInterval(interval);
+            }, [profile?.id, !!emailAccount]);
 
             // --- Cross-device "who has this job open" presence + edit-lock ---------
             // A single Realtime Presence channel, shared for the whole session. Whoever
@@ -4221,6 +4727,23 @@
                 setPurchaseRequestsState(prev => {
                     const next = typeof update === 'function' ? update(prev) : update;
                     persistRows('purchase_requests', diffChangedRows(prev, next));
+                    return next;
+                });
+            };
+
+            // Rows in `emails` are only ever INSERTed server-side (email-sync.js /
+            // email-send.js, with the service_role key) — the client is only allowed to
+            // UPDATE an existing row (e.g. toggling isRead), per the RLS policy in
+            // schema.sql. Using the shared upsert-based persistRows here would fail: an
+            // upsert still has to satisfy the NOT NULL `owner_id` column even on its
+            // insert branch, and the client never has that column to send.
+            const setEmails = (update) => {
+                setEmailsState(prev => {
+                    const next = typeof update === 'function' ? update(prev) : update;
+                    diffChangedRows(prev, next).forEach(r => {
+                        supabase.from('emails').update({ data: r }).eq('id', r.id)
+                            .then(({ error }) => { if (error) console.error('Failed to save email:', error); });
+                    });
                     return next;
                 });
             };
@@ -4465,6 +4988,13 @@
                     {(perms.canRequestParts || perms.canManagePurchaseOrders) && (
                         <button onClick={() => onNavigate('part-requests')} className={`w-full flex items-center px-5 py-3.5 rounded-lg text-sm font-bold transition ${activeTab === 'part-requests' ? 'bg-brand-600 text-white shadow-lg' : 'hover:bg-brand-800 hover:text-white'}`}><i className="fa-solid fa-cart-shopping w-6 text-center mr-2"></i> Purchase Requests</button>
                     )}
+                    <button onClick={() => onNavigate('profile')} className={`w-full flex items-center px-5 py-3.5 rounded-lg text-sm font-bold transition ${activeTab === 'profile' ? 'bg-brand-600 text-white shadow-lg' : 'hover:bg-brand-800 hover:text-white'}`}><i className="fa-solid fa-user-gear w-6 text-center mr-2"></i> My Profile</button>
+                    {emailAccount && (
+                        <button onClick={() => onNavigate('email')} className={`w-full flex items-center px-5 py-3.5 rounded-lg text-sm font-bold transition ${activeTab === 'email' ? 'bg-brand-600 text-white shadow-lg' : 'hover:bg-brand-800 hover:text-white'}`}>
+                            <i className="fa-solid fa-envelope w-6 text-center mr-2"></i> Email
+                            {unreadEmailCount > 0 && <span className="ml-auto bg-red-600 text-white text-[10px] font-black rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">{unreadEmailCount}</span>}
+                        </button>
+                    )}
                     {perms.canManageUsers && (
                         <React.Fragment>
                             <p className="text-[10px] font-black text-brand-500 uppercase tracking-widest mb-1 mt-5 ml-2">Superadmin Tools</p>
@@ -4478,9 +5008,14 @@
             const IdentityControls = () => (
                 <div>
                     <label className="block text-[10px] font-black text-brand-500 uppercase tracking-widest mb-2 flex items-center"><i className="fa-regular fa-id-badge mr-2"></i> Signed in as</label>
-                    <div className="bg-brand-900 border border-brand-700 rounded p-2.5">
-                        <p className="text-xs font-bold text-white truncate">{currentUserName}</p>
-                        <p className="text-[10px] text-brand-400 mt-0.5">{ROLE_LABELS[userRole] || userRole}</p>
+                    <div className="bg-brand-900 border border-brand-700 rounded p-2.5 flex items-center gap-2.5">
+                        {profile?.avatar_url
+                            ? <img src={profile.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
+                            : <div className="w-8 h-8 rounded-full bg-brand-700 text-white text-xs font-black flex items-center justify-center shrink-0">{(currentUserName || '?').charAt(0).toUpperCase()}</div>}
+                        <div className="min-w-0">
+                            <p className="text-xs font-bold text-white truncate">{currentUserName}</p>
+                            <p className="text-[10px] text-brand-400 mt-0.5">{ROLE_LABELS[userRole] || userRole}</p>
+                        </div>
                     </div>
                     {activeRestrictions && <p className="text-[10px] text-amber-400 mt-1.5"><i className="fa-solid fa-lock mr-1"></i>Extra restrictions active on your account</p>}
                     <button onClick={handleLogout} className="w-full mt-2 text-xs font-bold text-slate-400 hover:text-white border border-brand-700 hover:border-brand-500 rounded py-2 transition"><i className="fa-solid fa-right-from-bracket mr-1.5"></i> Log Out</button>
@@ -4592,6 +5127,8 @@
                             {activeTab === 'new-repair' && <NewRepairForm repairs={repairs} setRepairs={setRepairs} customers={customers} setCustomers={setCustomers} navigateTo={navigateTo} setPreviewImage={setPreviewImage} userRole={userRole} currentUserName={currentUserName} />}
                             {activeTab === 'inventory' && <Inventory stock={stock} loadData={loadData} selectedItemDetail={selectedItemDetail} setSelectedItemDetail={setSelectedItemDetail} transactions={transactions} stockError={stockError} perms={perms} onCreateRequest={handleCreatePartRequest} />}
                             {activeTab === 'part-requests' && (perms.canRequestParts || perms.canManagePurchaseOrders) && <PartRequests partRequests={partRequests} stock={stock} repairs={repairs} perms={perms} currentUserName={currentUserName} onCreateRequest={handleCreatePartRequest} onUpdateStatus={handleUpdatePartRequestStatus} />}
+                            {activeTab === 'profile' && <ProfilePage profile={profile} setProfile={setProfile} session={session} emailAccount={emailAccount} setEmailAccount={setEmailAccount} navigateTo={navigateTo} />}
+                            {activeTab === 'email' && emailAccount && <EmailPage account={emailAccount} emails={emails} setEmails={setEmails} currentUserEmail={session?.user?.email || ''} currentUserId={session?.user?.id} navigateTo={navigateTo} />}
                             {activeTab === 'users' && perms.canManageUsers && <UserManagement users={users} setUsers={setUsers} currentUserName={currentUserName} />}
                             {activeTab === 'activity' && perms.canManageUsers && <ActivityLog repairs={repairs} />}
                         </div>

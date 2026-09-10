@@ -5,6 +5,9 @@
   "type": "module",
   "description": "Turbo Control Solutions - Enterprise Service Management. Static frontend (index.html) plus Vercel serverless functions (api/) that keep secret keys (Gemini API key, Supabase service_role key) server-side.",
   "dependencies": {
-    "@supabase/supabase-js": "latest"
+    "@supabase/supabase-js": "latest",
+    "imapflow": "latest",
+    "mailparser": "latest",
+    "nodemailer": "latest"
   }
 }
