@@ -62,7 +62,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useMemo } = React;
 
         const GOOGLE_SHEET_API = "https://script.google.com/macros/s/AKfycbyC8x_A-FHxszNxo0obKdNVCSE_e9MM2eFsxWaH2PWDAXHnAsPcxISIdnObtCuN_lAr/exec";
 
@@ -515,7 +515,7 @@
             );
         };
 
-        const PURCHASE_PLATFORMS = ['Shopee', 'element14', 'DigiKey', 'RS Components', 'Local Supplier', 'Other'];
+        const PURCHASE_PLATFORMS = ['Shopee', 'element14', 'DigiKey', 'RS Components', 'Lazada', 'Local Supplier', 'Other'];
         const PURCHASE_REQUEST_STATUSES = ['Requested', 'Ordered', 'Shipped', 'Delivered', 'Cancelled'];
         const PURCHASE_STATUS_STYLE = {
             'Requested': 'bg-amber-50 text-amber-700 border-amber-200',
@@ -525,22 +525,55 @@
             'Cancelled': 'bg-slate-100 text-slate-500 border-slate-200'
         };
 
-        // A "request" is stored as one row per line item (mirrors how Transaction Log already logs
-        // one row per deducted part); everything sharing a Request ID moves through Ordered/Shipped/
-        // Delivered together, so the UI groups the flat list back into one card per Request ID.
-        const groupPartRequests = (partRequests) => {
-            const byId = {};
-            partRequests.forEach(pr => {
-                if (!byId[pr.requestId]) byId[pr.requestId] = { ...pr, items: [] };
-                byId[pr.requestId].items.push({ partId: pr.partId, partName: pr.partName, isNewPart: pr.isNewPart, qty: pr.qty, purchaseLink: pr.purchaseLink, photoUrl: pr.photoUrl });
-            });
-            return Object.values(byId).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        // Three kinds of line item. 'one-off' is the reason this isn't called "parts" any more:
+        // tools, test equipment and consumables get bought the same way, but must never land in
+        // the inventory as a stocked part.
+        const PURCHASE_ITEM_KINDS = {
+            stock: { label: 'From Inventory', hint: 'A part already in the inventory list', color: 'bg-brand-800 text-white border-brand-800' },
+            'new-stock': { label: 'New Stocked Part', hint: 'A part that should be added to the inventory', color: 'bg-amber-600 text-white border-amber-600' },
+            'one-off': { label: 'One-Off Buy', hint: 'Tools, equipment, consumables — not tracked as stock', color: 'bg-circuit-700 text-white border-circuit-700' }
         };
 
-        const emptyPartRequestItem = (partId) => ({ mode: 'existing', partId: partId || '', qty: 1, type: '', brand: '', partNumber: '', packageType: '', size: '', description: '', location: '', purchaseLink: '', photo: '', photoName: '' });
+        const lineTotal = (item) => (Number(item.qty) || 0) * (Number(item.unitPrice) || 0);
+        const requestTotal = (request) => (request.items || []).reduce((sum, it) => sum + lineTotal(it), 0);
+        const formatMoney = (value) => (Number(value) || 0).toFixed(2);
+
+        // Purchase requests raised before this moved to Supabase live in the old Google Sheet as
+        // one flat row per line item. They're folded back into the same shape as current requests
+        // so the history stays visible, but they're read-only — the Sheet has no columns for the
+        // pricing/ordering fields, so there's nothing to write back to.
+        const groupLegacyPartRequests = (rows) => {
+            const byId = {};
+            rows.forEach(pr => {
+                if (!pr.requestId) return;
+                if (!byId[pr.requestId]) {
+                    byId[pr.requestId] = {
+                        id: pr.requestId, requestId: pr.requestId, timestamp: pr.timestamp, requestedBy: pr.requestedBy,
+                        jobId: pr.jobId, title: '', notes: pr.notes, status: pr.status, purchaser: pr.purchaser,
+                        platform: pr.platform, trackingNumber: pr.trackingNumber, trackingLink: pr.trackingLink,
+                        lastUpdated: pr.lastUpdated, legacy: true, items: []
+                    };
+                }
+                byId[pr.requestId].items.push({
+                    kind: pr.isNewPart ? 'new-stock' : 'stock', partId: pr.partId, partNo: pr.partId,
+                    partName: pr.partName, description: '', qty: pr.qty, unitPrice: '', supplier: '',
+                    purchaseLink: pr.purchaseLink, leadTime: '', photoUrl: pr.photoUrl,
+                    qtyOrdered: '', orderDate: '', qtyReceived: '', receivedDate: '', remark: ''
+                });
+            });
+            return Object.values(byId);
+        };
+
+        const emptyPartRequestItem = (partId) => ({
+            kind: partId ? 'stock' : 'one-off', partId: partId || '', qty: 1,
+            type: '', brand: '', partNumber: '', packageType: '', size: '', location: '',
+            partNo: '', itemName: '', description: '', unitPrice: '', supplier: '', purchaseLink: '', leadTime: '',
+            photo: '', photoName: ''
+        });
 
         const PartRequestModal = ({ stock, jobId, initialPartId, onSubmit, onClose }) => {
             const [items, setItems] = useState([emptyPartRequestItem(initialPartId)]);
+            const [title, setTitle] = useState('');
             const [notes, setNotes] = useState('');
 
             const updateItem = (idx, patch) => setItems(items.map((it, i) => i === idx ? { ...it, ...patch } : it));
@@ -552,64 +585,131 @@
                 reader.readAsDataURL(file);
             };
 
-            const canSubmit = items.every(it => (it.mode === 'existing' ? it.partId : (it.type || it.partNumber)) && Number(it.qty) > 0);
+            const itemIsValid = (it) => {
+                if (!(Number(it.qty) > 0)) return false;
+                if (it.kind === 'stock') return !!it.partId;
+                if (it.kind === 'new-stock') return !!(it.type || it.partNumber);
+                return !!(it.itemName || it.partNo);
+            };
+            const canSubmit = items.length > 0 && items.every(itemIsValid);
+            const grandTotal = items.reduce((sum, it) => sum + lineTotal(it), 0);
+
+            const fieldClass = "w-full border border-slate-300 rounded p-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none";
+            const labelClass = "block text-[11px] font-bold text-slate-600 mb-1";
 
             return (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto custom-scrollbar">
                         <div className="p-6 border-b border-slate-200 flex justify-between items-center sticky top-0 bg-white z-10">
-                            <h3 className="text-lg font-bold text-slate-800"><i className="fa-solid fa-boxes-packing text-amber-600 mr-2"></i> Request Part{jobId ? ` — ${jobId}` : ' (General Restock)'}</h3>
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-800"><i className="fa-solid fa-cart-shopping text-amber-600 mr-2"></i> New Purchase Request</h3>
+                                <p className="text-xs text-slate-500 mt-1">{jobId ? `For job ${jobId}` : 'Parts, tools, equipment, consumables — anything you need bought.'}</p>
+                            </div>
                             <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><i className="fa-solid fa-xmark text-xl"></i></button>
                         </div>
                         <div className="p-6 space-y-4">
+                            <div>
+                                <label className={labelClass}>What is this for?</label>
+                                <input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Parts for Emerson, workshop tools, bench restock" className={fieldClass} />
+                            </div>
+
                             {items.map((item, idx) => (
                                 <div key={idx} className="border border-slate-200 rounded-lg p-4 bg-slate-50 space-y-3">
-                                    <div className="flex justify-between items-center">
+                                    <div className="flex justify-between items-start gap-3">
                                         <div className="flex gap-2 flex-wrap">
-                                            <button type="button" onClick={() => updateItem(idx, { mode: 'existing' })} className={`px-3 py-1 rounded text-xs font-bold border transition ${item.mode === 'existing' ? 'bg-brand-800 text-white border-brand-800' : 'bg-white text-slate-600 border-slate-300'}`}>Existing Part</button>
-                                            <button type="button" onClick={() => updateItem(idx, { mode: 'new' })} className={`px-3 py-1 rounded text-xs font-bold border transition ${item.mode === 'new' ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-slate-600 border-slate-300'}`}>New Part</button>
+                                            {Object.keys(PURCHASE_ITEM_KINDS).map(kind => (
+                                                <button key={kind} type="button" onClick={() => updateItem(idx, { kind })} title={PURCHASE_ITEM_KINDS[kind].hint}
+                                                    className={`px-3 py-1 rounded text-xs font-bold border transition ${item.kind === kind ? PURCHASE_ITEM_KINDS[kind].color : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'}`}>
+                                                    {PURCHASE_ITEM_KINDS[kind].label}
+                                                </button>
+                                            ))}
                                         </div>
-                                        {items.length > 1 && <button type="button" onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700 text-xs"><i className="fa-solid fa-trash"></i></button>}
+                                        {items.length > 1 && <button type="button" onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700 text-xs shrink-0 p-1"><i className="fa-solid fa-trash"></i></button>}
                                     </div>
-                                    {item.mode === 'existing' ? (
+
+                                    <p className="text-[11px] text-slate-500 -mt-1">{PURCHASE_ITEM_KINDS[item.kind].hint}</p>
+
+                                    {item.kind === 'stock' && (
                                         <div className="flex gap-3 items-center bg-white p-2 border border-slate-200 rounded">
                                             <SearchablePartSelect stock={stock} value={item.partId} onChange={(id) => updateItem(idx, { partId: id })} />
                                         </div>
-                                    ) : (
+                                    )}
+
+                                    {item.kind === 'new-stock' && (
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            <input placeholder="Type" value={item.type} onChange={e => updateItem(idx, { type: e.target.value })} className="border border-slate-300 rounded p-2 text-sm" />
-                                            <input placeholder="Brand" value={item.brand} onChange={e => updateItem(idx, { brand: e.target.value })} className="border border-slate-300 rounded p-2 text-sm" />
-                                            <input placeholder="Part Number" value={item.partNumber} onChange={e => updateItem(idx, { partNumber: e.target.value })} className="border border-slate-300 rounded p-2 text-sm" />
-                                            <input placeholder="Package Type" value={item.packageType} onChange={e => updateItem(idx, { packageType: e.target.value })} className="border border-slate-300 rounded p-2 text-sm" />
-                                            <input placeholder="Size" value={item.size} onChange={e => updateItem(idx, { size: e.target.value })} className="border border-slate-300 rounded p-2 text-sm" />
-                                            <input placeholder="Storage Location" value={item.location} onChange={e => updateItem(idx, { location: e.target.value })} className="border border-slate-300 rounded p-2 text-sm" />
-                                            <input placeholder="Description" value={item.description} onChange={e => updateItem(idx, { description: e.target.value })} className="border border-slate-300 rounded p-2 text-sm col-span-2" />
+                                            <input placeholder="Type" value={item.type} onChange={e => updateItem(idx, { type: e.target.value })} className={fieldClass} />
+                                            <input placeholder="Brand" value={item.brand} onChange={e => updateItem(idx, { brand: e.target.value })} className={fieldClass} />
+                                            <input placeholder="Part Number" value={item.partNumber} onChange={e => updateItem(idx, { partNumber: e.target.value })} className={fieldClass} />
+                                            <input placeholder="Package Type" value={item.packageType} onChange={e => updateItem(idx, { packageType: e.target.value })} className={fieldClass} />
+                                            <input placeholder="Size" value={item.size} onChange={e => updateItem(idx, { size: e.target.value })} className={fieldClass} />
+                                            <input placeholder="Storage Location" value={item.location} onChange={e => updateItem(idx, { location: e.target.value })} className={fieldClass} />
+                                            <input placeholder="Description" value={item.description} onChange={e => updateItem(idx, { description: e.target.value })} className={`${fieldClass} sm:col-span-2`} />
                                         </div>
                                     )}
-                                    <div className="flex items-center gap-2">
-                                        <label className="text-xs font-bold text-slate-600">Qty Needed</label>
-                                        <input type="number" min="1" value={item.qty} onChange={e => updateItem(idx, { qty: e.target.value })} className="w-24 border border-slate-300 rounded p-2 text-sm text-center" />
-                                    </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-200">
+
+                                    {item.kind === 'one-off' && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            <input placeholder="Item name (e.g. Network Cable Tool Kit)" value={item.itemName} onChange={e => updateItem(idx, { itemName: e.target.value })} className={`${fieldClass} sm:col-span-2`} />
+                                            <input placeholder="Part No / Model (optional)" value={item.partNo} onChange={e => updateItem(idx, { partNo: e.target.value })} className={fieldClass} />
+                                            <input placeholder="Description / spec" value={item.description} onChange={e => updateItem(idx, { description: e.target.value })} className={fieldClass} />
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3 border-t border-slate-200">
                                         <div>
-                                            <label className="block text-[11px] font-bold text-slate-600 mb-1">Link to Purchase (optional)</label>
-                                            <input placeholder="https://shopee.com.my/... or https://www.digikey.com/..." value={item.purchaseLink} onChange={e => updateItem(idx, { purchaseLink: e.target.value })} className="w-full border border-slate-300 rounded p-2 text-sm" />
+                                            <label className={labelClass}>Qty Needed</label>
+                                            <input type="number" min="1" value={item.qty} onChange={e => updateItem(idx, { qty: e.target.value })} className={`${fieldClass} text-center`} />
                                         </div>
                                         <div>
-                                            <label className="block text-[11px] font-bold text-slate-600 mb-1">Component Photo (optional)</label>
-                                            <div className="flex items-center gap-2">
-                                                <label className="bg-white border border-slate-300 hover:border-brand-500 text-slate-700 px-3 py-2 rounded text-xs font-bold cursor-pointer transition">
-                                                    <i className="fa-solid fa-camera mr-1.5"></i> {item.photoName ? 'Change' : 'Upload'}
-                                                    <input type="file" accept="image/*" className="hidden" onChange={e => handlePhotoChange(idx, e.target.files[0])} />
-                                                </label>
-                                                {item.photo && <img src={item.photo} alt="Component" className="w-10 h-10 object-cover rounded border border-slate-200" />}
-                                                {item.photoName && <span className="text-[11px] text-slate-500 truncate max-w-[100px]">{item.photoName}</span>}
-                                            </div>
+                                            <label className={labelClass}>Est. Price (RM)</label>
+                                            <input type="number" min="0" step="0.01" placeholder="0.00" value={item.unitPrice} onChange={e => updateItem(idx, { unitPrice: e.target.value })} className={`${fieldClass} text-right`} />
+                                        </div>
+                                        <div>
+                                            <label className={labelClass}>Line Total</label>
+                                            <div className="border border-slate-200 bg-slate-100 rounded p-2 text-sm font-mono font-bold text-slate-700 text-right">{formatMoney(lineTotal(item))}</div>
+                                        </div>
+                                        <div>
+                                            <label className={labelClass}>Lead Time</label>
+                                            <input placeholder="e.g. 1 week" value={item.leadTime} onChange={e => updateItem(idx, { leadTime: e.target.value })} className={fieldClass} />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <div>
+                                            <label className={labelClass}>Where to buy</label>
+                                            <select value={item.supplier} onChange={e => updateItem(idx, { supplier: e.target.value })} className={`${fieldClass} bg-white`}>
+                                                <option value="">Purchaser decides</option>
+                                                {PURCHASE_PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className={labelClass}>Link (optional)</label>
+                                            <input placeholder="https://shopee.com.my/..." value={item.purchaseLink} onChange={e => updateItem(idx, { purchaseLink: e.target.value })} className={fieldClass} />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className={labelClass}>Photo (optional)</label>
+                                        <div className="flex items-center gap-2">
+                                            <label className="bg-white border border-slate-300 hover:border-brand-500 text-slate-700 px-3 py-2 rounded text-xs font-bold cursor-pointer transition">
+                                                <i className="fa-solid fa-camera mr-1.5"></i> {item.photoName ? 'Change' : 'Upload'}
+                                                <input type="file" accept="image/*" className="hidden" onChange={e => handlePhotoChange(idx, e.target.files[0])} />
+                                            </label>
+                                            {item.photo && <img src={item.photo} alt="Item" className="w-10 h-10 object-cover rounded border border-slate-200" />}
+                                            {item.photoName && <span className="text-[11px] text-slate-500 truncate max-w-[140px]">{item.photoName}</span>}
                                         </div>
                                     </div>
                                 </div>
                             ))}
-                            <button type="button" onClick={() => setItems([...items, emptyPartRequestItem()])} className="text-xs font-bold text-brand-700 hover:underline flex items-center"><i className="fa-solid fa-plus mr-1"></i> Add Another Item</button>
+
+                            <div className="flex justify-between items-center flex-wrap gap-3">
+                                <button type="button" onClick={() => setItems([...items, emptyPartRequestItem()])} className="text-xs font-bold text-brand-700 hover:underline flex items-center"><i className="fa-solid fa-plus mr-1"></i> Add Another Item</button>
+                                <div className="text-sm">
+                                    <span className="text-slate-500 mr-2">Estimated total</span>
+                                    <span className="font-mono font-bold text-slate-900 text-base">RM {formatMoney(grandTotal)}</span>
+                                </div>
+                            </div>
+
                             <div>
                                 <label className="block text-xs font-bold text-slate-700 mb-1">Notes</label>
                                 <textarea value={notes} onChange={e => setNotes(e.target.value)} rows="2" placeholder="Any context the purchaser should know..." className="w-full border border-slate-300 rounded p-2.5 text-sm"></textarea>
@@ -617,7 +717,7 @@
                         </div>
                         <div className="p-6 border-t border-slate-200 flex justify-end gap-3 sticky bottom-0 bg-white">
                             <button onClick={onClose} className="px-5 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-100 transition">Cancel</button>
-                            <button disabled={!canSubmit} onClick={() => onSubmit(items, notes)} className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2.5 rounded-lg text-sm font-bold transition shadow-md disabled:opacity-40 disabled:cursor-not-allowed">Send Request to Purchasing</button>
+                            <button disabled={!canSubmit} onClick={() => onSubmit(items, notes, title)} className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-2.5 rounded-lg text-sm font-bold transition shadow-md disabled:opacity-40 disabled:cursor-not-allowed">Send Request to Purchasing</button>
                         </div>
                     </div>
                 </div>
@@ -628,50 +728,121 @@
             const [platform, setPlatform] = useState(group.platform || '');
             const [trackingNumber, setTrackingNumber] = useState(group.trackingNumber || '');
             const [trackingLink, setTrackingLink] = useState(group.trackingLink || '');
+            const [items, setItems] = useState(group.items || []);
             const linkedJob = group.jobId ? repairs.find(r => r.id === group.jobId) : null;
+            const editable = canManage && !group.legacy;
 
-            const setStatus = (status) => onUpdate(group.requestId, { status, platform, trackingNumber, trackingLink });
+            const updateItem = (idx, patch) => setItems(items.map((it, i) => i === idx ? { ...it, ...patch } : it));
+            const commit = (extra) => onUpdate(group.requestId || group.id, { platform, trackingNumber, trackingLink, items, ...extra });
+
+            const fieldClass = "w-full border border-slate-300 rounded p-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none";
+            const labelClass = "block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1";
 
             return (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto custom-scrollbar">
-                        <div className="p-6 border-b border-slate-200 flex justify-between items-center">
-                            <div>
-                                <h3 className="text-lg font-bold text-slate-800 font-mono">{group.requestId}</h3>
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto custom-scrollbar">
+                        <div className="p-6 border-b border-slate-200 flex justify-between items-start gap-3 sticky top-0 bg-white z-10">
+                            <div className="min-w-0">
+                                <h3 className="text-lg font-bold text-slate-800 font-mono">{group.requestId || group.id}</h3>
+                                {group.title && <p className="text-sm font-semibold text-slate-700 mt-0.5">{group.title}</p>}
                                 <p className="text-xs text-slate-500 mt-1">Requested by {group.requestedBy} • {formatDateTime(group.timestamp)}</p>
                             </div>
-                            <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><i className="fa-solid fa-xmark text-xl"></i></button>
+                            <button onClick={onClose} className="text-slate-400 hover:text-slate-700 shrink-0"><i className="fa-solid fa-xmark text-xl"></i></button>
                         </div>
-                        <div className="p-6 space-y-4">
-                            <div>
-                                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Items</div>
-                                <div className="space-y-2">
-                                    {group.items.map((it, i) => (
-                                        <div key={i} className="flex justify-between items-center gap-3 bg-slate-50 border border-slate-200 rounded p-2.5 text-sm">
-                                            <div className="flex items-center gap-2 min-w-0">
-                                                {it.photoUrl && <img src={it.photoUrl} alt={it.partName} className="w-9 h-9 object-cover rounded border border-slate-200 shrink-0" />}
-                                                <div className="min-w-0">
-                                                    <span className="font-semibold text-slate-800">{it.partName} {it.isNewPart && <span className="ml-1 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase align-middle">New</span>}</span>
-                                                    {it.purchaseLink && <a href={it.purchaseLink} target="_blank" rel="noreferrer" className="block text-[11px] text-brand-700 font-bold hover:underline truncate"><i className="fa-solid fa-arrow-up-right-from-square mr-1"></i>Purchase link</a>}
-                                                </div>
-                                            </div>
-                                            <span className="font-mono text-xs text-slate-500 shrink-0">x{it.qty}</span>
-                                        </div>
-                                    ))}
+                        <div className="p-6 space-y-5">
+                            {group.legacy && (
+                                <div className="text-xs bg-slate-100 border border-slate-200 rounded p-3 text-slate-600">
+                                    <i className="fa-solid fa-clock-rotate-left mr-1.5"></i>
+                                    Archived request from the old spreadsheet system — kept for reference, but it can't be edited here.
                                 </div>
+                            )}
+
+                            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                                <div><span className="text-slate-500">For job: </span><span className="font-bold text-slate-800">{group.jobId || 'General / not job-specific'}</span>{linkedJob && <span className="text-xs text-slate-500 ml-2">({linkedJob.itemName})</span>}</div>
+                                <div><span className="text-slate-500">Estimated total: </span><span className="font-mono font-bold text-slate-900">RM {formatMoney(requestTotal({ items }))}</span></div>
                             </div>
-                            <div className="text-sm">
-                                <span className="text-slate-500">Linked Job: </span>
-                                <span className="font-bold text-slate-800">{group.jobId ? group.jobId : 'General Restock'}</span>
-                                {linkedJob && <span className="text-xs text-slate-500 ml-2">({linkedJob.itemName})</span>}
-                            </div>
+
                             {group.notes && <div className="text-sm bg-slate-50 border border-slate-200 rounded p-3 text-slate-700">{group.notes}</div>}
 
-                            {canManage ? (
-                                <div className="space-y-3 pt-3 border-t border-slate-100">
+                            <div>
+                                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Items</div>
+                                <div className="space-y-3">
+                                    {items.map((it, i) => {
+                                        const outstanding = (Number(it.qty) || 0) - (Number(it.qtyReceived) || 0);
+                                        return (
+                                            <div key={i} className="border border-slate-200 rounded-lg overflow-hidden">
+                                                <div className="bg-slate-50 p-3 flex justify-between items-start gap-3">
+                                                    <div className="flex items-start gap-2 min-w-0">
+                                                        {it.photoUrl && <img src={it.photoUrl} alt={it.partName} className="w-10 h-10 object-cover rounded border border-slate-200 shrink-0" />}
+                                                        <div className="min-w-0">
+                                                            <div className="font-semibold text-slate-800 text-sm break-words">
+                                                                {it.partName || it.itemName || it.partNo}
+                                                                {it.kind === 'one-off' && <span className="ml-2 text-[9px] bg-cyan-100 text-cyan-800 px-1.5 py-0.5 rounded font-bold uppercase align-middle">One-off</span>}
+                                                                {it.kind === 'new-stock' && <span className="ml-2 text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase align-middle">New Part</span>}
+                                                            </div>
+                                                            {it.partNo && it.partNo !== it.partName && <div className="text-[11px] font-mono text-slate-500 break-words">{it.partNo}</div>}
+                                                            {it.description && <div className="text-[11px] text-slate-500 break-words">{it.description}</div>}
+                                                            <div className="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3">
+                                                                {it.supplier && <span><i className="fa-solid fa-store mr-1"></i>{it.supplier}</span>}
+                                                                {it.leadTime && <span><i className="fa-regular fa-clock mr-1"></i>{it.leadTime}</span>}
+                                                                {it.purchaseLink && <a href={it.purchaseLink} target="_blank" rel="noreferrer" className="text-brand-700 font-bold hover:underline"><i className="fa-solid fa-arrow-up-right-from-square mr-1"></i>Link</a>}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right shrink-0 text-xs">
+                                                        <div className="font-mono font-bold text-slate-800">x{it.qty}</div>
+                                                        {Number(it.unitPrice) > 0 && <div className="font-mono text-slate-500 mt-0.5">RM {formatMoney(lineTotal(it))}</div>}
+                                                    </div>
+                                                </div>
+
+                                                {(editable || it.qtyOrdered || it.qtyReceived || it.remark) && (
+                                                    <div className="p-3 border-t border-slate-200">
+                                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2">Purchasing</div>
+                                                        {editable ? (
+                                                            <div className="space-y-2">
+                                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                                                    <div>
+                                                                        <label className={labelClass}>Qty Ordered</label>
+                                                                        <input type="number" min="0" value={it.qtyOrdered || ''} onChange={e => updateItem(i, { qtyOrdered: e.target.value })} className={`${fieldClass} text-center`} />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className={labelClass}>Order Date</label>
+                                                                        <input type="date" value={it.orderDate || ''} onChange={e => updateItem(i, { orderDate: e.target.value })} className={fieldClass} />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className={labelClass}>Qty Received</label>
+                                                                        <input type="number" min="0" value={it.qtyReceived || ''} onChange={e => updateItem(i, { qtyReceived: e.target.value })} className={`${fieldClass} text-center`} />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className={labelClass}>Received Date</label>
+                                                                        <input type="date" value={it.receivedDate || ''} onChange={e => updateItem(i, { receivedDate: e.target.value })} className={fieldClass} />
+                                                                    </div>
+                                                                </div>
+                                                                <input placeholder="Remark (backorder, substitute, price change...)" value={it.remark || ''} onChange={e => updateItem(i, { remark: e.target.value })} className={fieldClass} />
+                                                                {outstanding > 0 && (Number(it.qtyReceived) || 0) > 0 && (
+                                                                    <p className="text-[11px] font-bold text-amber-700"><i className="fa-solid fa-triangle-exclamation mr-1"></i>{outstanding} still outstanding</p>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="text-xs text-slate-600 flex flex-wrap gap-x-4 gap-y-1">
+                                                                <span>Ordered: <b>{it.qtyOrdered || '—'}</b>{it.orderDate ? ` on ${it.orderDate}` : ''}</span>
+                                                                <span>Received: <b>{it.qtyReceived || '—'}</b>{it.receivedDate ? ` on ${it.receivedDate}` : ''}</span>
+                                                                {it.remark && <span className="w-full text-slate-500 italic">{it.remark}</span>}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {editable ? (
+                                <div className="space-y-3 pt-4 border-t border-slate-200">
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         <div>
-                                            <label className="block text-xs font-bold text-slate-700 mb-1">Platform</label>
+                                            <label className="block text-xs font-bold text-slate-700 mb-1">Bought From</label>
                                             <select value={platform} onChange={e => setPlatform(e.target.value)} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-white">
                                                 <option value="">Select platform...</option>
                                                 {PURCHASE_PLATFORMS.map(p => <option key={p} value={p}>{p}</option>)}
@@ -687,17 +858,20 @@
                                         <input value={trackingLink} onChange={e => setTrackingLink(e.target.value)} placeholder="https://..." className="w-full border border-slate-300 rounded p-2.5 text-sm" />
                                     </div>
                                     <div className="flex flex-wrap gap-2 pt-2">
+                                        <button onClick={() => commit({})} className="bg-white border border-brand-700 text-brand-800 hover:bg-brand-50 px-4 py-2 rounded-lg text-xs font-bold transition">
+                                            <i className="fa-solid fa-floppy-disk mr-1.5"></i>Save Purchasing Details
+                                        </button>
                                         {group.status !== 'Cancelled' && group.status !== 'Delivered' && PURCHASE_REQUEST_STATUSES.filter(s => s !== 'Cancelled' && s !== group.status).map(s => (
-                                            <button key={s} onClick={() => setStatus(s)} className="bg-brand-800 hover:bg-brand-900 text-white px-4 py-2 rounded-lg text-xs font-bold transition shadow-sm">Mark {s}</button>
+                                            <button key={s} onClick={() => commit({ status: s })} className="bg-brand-800 hover:bg-brand-900 text-white px-4 py-2 rounded-lg text-xs font-bold transition shadow-sm">Mark {s}</button>
                                         ))}
                                         {group.status !== 'Delivered' && group.status !== 'Cancelled' && (
-                                            <button onClick={() => setStatus('Cancelled')} className="bg-white border border-red-300 text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg text-xs font-bold transition">Cancel Request</button>
+                                            <button onClick={() => commit({ status: 'Cancelled' })} className="bg-white border border-red-300 text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg text-xs font-bold transition">Cancel Request</button>
                                         )}
                                     </div>
                                 </div>
                             ) : (
-                                <div className="pt-3 border-t border-slate-100 text-sm space-y-1">
-                                    <div><span className="text-slate-500">Platform: </span><span className="font-bold text-slate-800">{group.platform || '—'}</span></div>
+                                <div className="pt-4 border-t border-slate-200 text-sm space-y-1">
+                                    <div><span className="text-slate-500">Bought from: </span><span className="font-bold text-slate-800">{group.platform || '—'}</span></div>
                                     <div><span className="text-slate-500">Tracking: </span>{group.trackingLink ? <a href={group.trackingLink} target="_blank" rel="noreferrer" className="text-brand-700 font-bold hover:underline">{group.trackingNumber || group.trackingLink} <i className="fa-solid fa-arrow-up-right-from-square text-[10px] ml-1"></i></a> : <span className="font-bold text-slate-800">{group.trackingNumber || '—'}</span>}</div>
                                 </div>
                             )}
@@ -712,14 +886,16 @@
             const [showCreateModal, setShowCreateModal] = useState(false);
             const [selectedGroup, setSelectedGroup] = useState(null);
 
-            const groups = groupPartRequests(partRequests).filter(g => statusFilter === 'All' || g.status === statusFilter);
+            const groups = partRequests
+                .filter(g => statusFilter === 'All' || g.status === statusFilter)
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
             return (
                 <div className="space-y-6 fade-in">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                         <div>
-                            <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Part Requests</h2>
-                            <p className="text-sm text-slate-500 mt-1">Engineering requests for parts to purchase, tracked through to delivery.</p>
+                            <h2 className="text-2xl font-bold text-slate-800 tracking-tight">Purchase Requests</h2>
+                            <p className="text-sm text-slate-500 mt-1">Anything the team needs bought — parts, tools, equipment, consumables — tracked through to delivery.</p>
                         </div>
                         <div className="flex gap-3 items-center">
                             <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="border border-slate-300 rounded-lg text-sm px-3 py-2 shadow-sm bg-white focus:ring-2 focus:ring-brand-500 outline-none">
@@ -728,7 +904,7 @@
                             </select>
                             {(perms.canRequestParts || perms.canManagePurchaseOrders) && (
                                 <button onClick={() => setShowCreateModal(true)} className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition shadow-md whitespace-nowrap">
-                                    <i className="fa-solid fa-plus mr-2"></i> New Part Request
+                                    <i className="fa-solid fa-plus mr-2"></i> New Purchase Request
                                 </button>
                             )}
                         </div>
@@ -739,31 +915,39 @@
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 text-xs uppercase tracking-wider">
-                                    <th className="p-4 font-bold">Request ID</th>
+                                    <th className="p-4 font-bold">Request</th>
                                     <th className="p-4 font-bold">Items</th>
+                                    <th className="p-4 font-bold text-right">Est. Total</th>
                                     <th className="p-4 font-bold">Job</th>
                                     <th className="p-4 font-bold">Requested By</th>
                                     <th className="p-4 font-bold">Status</th>
-                                    <th className="p-4 font-bold">Platform</th>
                                     <th className="p-4 font-bold">Tracking</th>
                                     <th className="p-4 font-bold text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {groups.length === 0 ? (
-                                    <tr><td colSpan={8} className="p-8 text-center text-slate-400 italic">No part requests match your filters.</td></tr>
+                                    <tr><td colSpan={8} className="p-8 text-center text-slate-400 italic">No purchase requests match your filters.</td></tr>
                                 ) : groups.map(g => (
-                                    <tr key={g.requestId} className="hover:bg-slate-50 transition">
-                                        <td className="p-4 font-mono text-xs font-bold text-brand-800">{g.requestId}</td>
+                                    <tr key={g.id || g.requestId} className="hover:bg-slate-50 transition">
+                                        <td className="p-4 min-w-0">
+                                            <div className="font-mono text-xs font-bold text-brand-800 break-words">{g.requestId || g.id}</div>
+                                            {g.title && <div className="text-xs text-slate-600 mt-0.5 break-words">{g.title}</div>}
+                                            {g.legacy && <span className="inline-block mt-1 text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase">Archived</span>}
+                                        </td>
                                         <td className="p-4 text-xs text-slate-700">
-                                            {g.items.map((it, i) => (
-                                                <div key={i}>{it.partName} <span className="text-slate-400">x{it.qty}</span> {it.isNewPart && <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold uppercase">New</span>}</div>
+                                            {(g.items || []).map((it, i) => (
+                                                <div key={i} className="break-words">
+                                                    {it.partName || it.itemName || it.partNo} <span className="text-slate-400">x{it.qty}</span>
+                                                    {it.kind === 'one-off' && <span className="ml-1 text-[9px] bg-cyan-100 text-cyan-800 px-1 py-0.5 rounded font-bold uppercase">One-off</span>}
+                                                    {it.kind === 'new-stock' && <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold uppercase">New</span>}
+                                                </div>
                                             ))}
                                         </td>
-                                        <td className="p-4 text-xs font-semibold text-slate-600">{g.jobId || <span className="italic text-slate-400 font-normal">General Restock</span>}</td>
+                                        <td className="p-4 text-xs font-mono font-bold text-slate-700 text-right whitespace-nowrap">{requestTotal(g) > 0 ? `RM ${formatMoney(requestTotal(g))}` : <span className="text-slate-400 font-sans font-normal">—</span>}</td>
+                                        <td className="p-4 text-xs font-semibold text-slate-600">{g.jobId || <span className="italic text-slate-400 font-normal">General</span>}</td>
                                         <td className="p-4 text-xs font-semibold text-slate-600">{g.requestedBy}</td>
-                                        <td className="p-4"><span className={`px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border ${PURCHASE_STATUS_STYLE[g.status] || PURCHASE_STATUS_STYLE.Requested}`}>{g.status}</span></td>
-                                        <td className="p-4 text-xs font-semibold text-slate-600">{g.platform || '—'}</td>
+                                        <td className="p-4"><span className={`px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border whitespace-nowrap ${PURCHASE_STATUS_STYLE[g.status] || PURCHASE_STATUS_STYLE.Requested}`}>{g.status}</span></td>
                                         <td className="p-4 text-xs">
                                             {g.trackingLink ? <a href={g.trackingLink} target="_blank" rel="noreferrer" className="text-brand-700 font-bold hover:underline"><i className="fa-solid fa-arrow-up-right-from-square mr-1"></i>Track</a> : (g.trackingNumber || <span className="text-slate-400">—</span>)}
                                         </td>
@@ -784,11 +968,12 @@
                             stock={stock}
                             jobId={null}
                             onClose={() => setShowCreateModal(false)}
-                            onSubmit={(items, notes) => { onCreateRequest(null, items, notes); setShowCreateModal(false); }}
+                            onSubmit={(items, notes, title) => { onCreateRequest(null, items, notes, title); setShowCreateModal(false); }}
                         />
                     )}
                     {selectedGroup && (
                         <PartRequestStatusModal
+                            key={selectedGroup.id || selectedGroup.requestId}
                             group={selectedGroup}
                             canManage={perms.canManagePurchaseOrders}
                             repairs={repairs}
@@ -1942,7 +2127,7 @@
                                 </button>
                                 {perms.canRequestParts && (
                                     <button disabled={dis} onClick={() => setShowPartRequestModal(true)} className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
-                                        <i className="fa-solid fa-boxes-packing mr-2"></i> Request Part
+                                        <i className="fa-solid fa-cart-shopping mr-2"></i> Request Purchase
                                     </button>
                                 )}
                                 <button disabled={dis} onClick={() => updateStatus('Repair Completed')} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
@@ -2186,27 +2371,31 @@
                                     </div>
 
                                     {(() => {
-                                        const jobRequests = groupPartRequests((partRequests || []).filter(pr => pr.jobId === selectedRepair.id));
+                                        const jobRequests = (partRequests || []).filter(pr => pr.jobId === selectedRepair.id);
                                         if (jobRequests.length === 0) return null;
                                         return (
                                             <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 no-print">
-                                                <h3 className="text-xs font-black text-brand-800 uppercase tracking-widest mb-4 flex items-center"><i className="fa-solid fa-boxes-packing mr-2"></i> Part Requests for this Job</h3>
+                                                <h3 className="text-xs font-black text-brand-800 uppercase tracking-widest mb-4 flex items-center"><i className="fa-solid fa-cart-shopping mr-2"></i> Purchase Requests for this Job</h3>
                                                 <div className="space-y-3">
                                                     {jobRequests.map(g => (
-                                                        <div key={g.requestId} className="border border-slate-200 rounded-lg p-4 bg-slate-50">
+                                                        <div key={g.id || g.requestId} className="border border-slate-200 rounded-lg p-4 bg-slate-50">
                                                             <div className="flex justify-between items-start gap-3 flex-wrap">
                                                                 <div>
-                                                                    <span className="font-mono text-xs font-black text-brand-800">{g.requestId}</span>
+                                                                    <span className="font-mono text-xs font-black text-brand-800">{g.requestId || g.id}</span>
                                                                     <span className={`ml-2 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${PURCHASE_STATUS_STYLE[g.status] || PURCHASE_STATUS_STYLE.Requested}`}>{g.status}</span>
                                                                     {g.platform && <span className="ml-2 text-[11px] text-slate-500">via {g.platform}</span>}
                                                                 </div>
                                                                 {g.trackingLink && <a href={g.trackingLink} target="_blank" rel="noreferrer" className="text-brand-700 text-xs font-bold hover:underline"><i className="fa-solid fa-arrow-up-right-from-square mr-1"></i>Track</a>}
                                                             </div>
                                                             <div className="mt-2 text-xs text-slate-700 space-y-1.5">
-                                                                {g.items.map((it, i) => (
+                                                                {(g.items || []).map((it, i) => (
                                                                     <div key={i} className="flex items-center gap-2">
                                                                         {it.photoUrl && <img src={it.photoUrl} alt={it.partName} className="w-7 h-7 object-cover rounded border border-slate-200 shrink-0" />}
-                                                                        <span>{it.partName} <span className="text-slate-400">x{it.qty}</span> {it.isNewPart && <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold uppercase">New</span>}</span>
+                                                                        <span>{it.partName || it.itemName || it.partNo} <span className="text-slate-400">x{it.qty}</span>
+                                                                            {it.kind === 'one-off' && <span className="ml-1 text-[9px] bg-cyan-100 text-cyan-800 px-1 py-0.5 rounded font-bold uppercase">One-off</span>}
+                                                                            {it.kind === 'new-stock' && <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold uppercase">New</span>}
+                                                                            {Number(it.qtyReceived) > 0 && <span className="ml-1 text-[9px] bg-emerald-100 text-emerald-700 px-1 py-0.5 rounded font-bold uppercase">{it.qtyReceived} received</span>}
+                                                                        </span>
                                                                         {it.purchaseLink && <a href={it.purchaseLink} target="_blank" rel="noreferrer" className="text-brand-700 font-bold hover:underline"><i className="fa-solid fa-arrow-up-right-from-square"></i></a>}
                                                                     </div>
                                                                 ))}
@@ -3181,7 +3370,7 @@
                                 stock={stock}
                                 jobId={selectedRepair.id}
                                 onClose={() => setShowPartRequestModal(false)}
-                                onSubmit={(items, notes) => { onCreateRequest(selectedRepair.id, items, notes); setShowPartRequestModal(false); }}
+                                onSubmit={(items, notes, title) => { onCreateRequest(selectedRepair.id, items, notes, title); setShowPartRequestModal(false); }}
                             />
                         )}
                     </div>
@@ -3474,7 +3663,7 @@
                                 jobId={null}
                                 initialPartId={restockTarget.id}
                                 onClose={() => setRestockTarget(null)}
-                                onSubmit={(items, notes) => { onCreateRequest(null, items, notes); setRestockTarget(null); }}
+                                onSubmit={(items, notes, title) => { onCreateRequest(null, items, notes, title); setRestockTarget(null); }}
                             />
                         )}
                     </div>
@@ -3829,7 +4018,15 @@
             const [dataError, setDataError] = useState('');
             const [stock, setStock] = useState([]);
             const [transactions, setTransactions] = useState([]);
-            const [partRequests, setPartRequests] = useState([]);
+            // Current requests live in Supabase (one row per request, items nested inside).
+            // `legacyPartRequests` are the older ones still sitting in the Google Sheet — shown
+            // as read-only history so past purchases don't vanish from the list.
+            const [purchaseRequests, setPurchaseRequestsState] = useState([]);
+            const [legacyPartRequests, setLegacyPartRequests] = useState([]);
+            const partRequests = useMemo(
+                () => [...purchaseRequests, ...legacyPartRequests.filter(l => !purchaseRequests.some(p => p.id === l.id))],
+                [purchaseRequests, legacyPartRequests]
+            );
             const [loadingStock, setLoadingStock] = useState(true);
             const [stockError, setStockError] = useState(null);
             const [selectedRepair, setSelectedRepair] = useState(null);
@@ -3861,7 +4058,8 @@
                     supabase.from('repairs').select('id, data'),
                     supabase.from('customers').select('id, data'),
                     supabase.from('profiles').select('*'),
-                ]).then(([repairsRes, customersRes, profilesRes]) => {
+                    supabase.from('purchase_requests').select('id, data'),
+                ]).then(([repairsRes, customersRes, profilesRes, purchaseRes]) => {
                     if (cancelled) return;
                     if (repairsRes.error || customersRes.error || profilesRes.error) {
                         setDataError('Failed to load work orders, customers, or user accounts from the database.');
@@ -3871,6 +4069,10 @@
                     setRepairsState((repairsRes.data || []).map(row => ({ ...row.data, id: row.id })));
                     setCustomersState((customersRes.data || []).map(row => ({ ...row.data, id: row.id })));
                     setUsers(profilesRes.data || []);
+                    // A missing purchase_requests table (schema.sql not run yet) shouldn't block
+                    // the rest of the app — the page still works, just without purchase history.
+                    if (purchaseRes.error) console.error('Failed to load purchase requests:', purchaseRes.error);
+                    else setPurchaseRequestsState((purchaseRes.data || []).map(row => ({ ...row.data, id: row.id })));
                     setDataLoading(false);
                 });
                 return () => { cancelled = true; };
@@ -3901,6 +4103,7 @@
                 const channel = supabase.channel('tcs-data-sync')
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'repairs' }, applyRemoteRow(setRepairsState))
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, applyRemoteRow(setCustomersState))
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'purchase_requests' }, applyRemoteRow(setPurchaseRequestsState))
                     .subscribe();
                 return () => { supabase.removeChannel(channel); };
             }, [profile?.id]);
@@ -4014,6 +4217,14 @@
                 });
             };
 
+            const setPurchaseRequests = (update) => {
+                setPurchaseRequestsState(prev => {
+                    const next = typeof update === 'function' ? update(prev) : update;
+                    persistRows('purchase_requests', diffChangedRows(prev, next));
+                    return next;
+                });
+            };
+
             const loadData = () => {
                 setLoadingStock(true);
                 setStockError(null);
@@ -4039,7 +4250,7 @@
                             qty: item["Current Stock"] || 0
                         })));
                         setTransactions(txnArray);
-                        setPartRequests((data.purchaseRequests || []).map(pr => ({
+                        setLegacyPartRequests(groupLegacyPartRequests((data.purchaseRequests || []).map(pr => ({
                             requestId: pr["Request ID"],
                             timestamp: pr["Timestamp"],
                             requestedBy: pr["Requested By"],
@@ -4057,7 +4268,7 @@
                             purchaseLink: pr["Purchase Link"],
                             photoUrl: pr["Photo URL"],
                             lastUpdated: pr["Last Updated"]
-                        })));
+                        }))));
                         setLoadingStock(false);
                     }).catch(err => {
                         setLoadingStock(false);
@@ -4150,12 +4361,25 @@
                 return 'PART-' + String(next).padStart(4, '0');
             };
 
-            const handleCreatePartRequest = (jobId, items, notes) => {
+            const handleCreatePartRequest = (jobId, items, notes, title) => {
                 const requestId = 'PR-' + Date.now().toString().slice(-8);
                 const timestamp = new Date().toISOString();
 
                 const finalItems = items.map(item => {
-                    if (item.mode === 'new') {
+                    const common = {
+                        kind: item.kind, qty: Number(item.qty), unitPrice: item.unitPrice || '',
+                        supplier: item.supplier || '', purchaseLink: item.purchaseLink || '', leadTime: item.leadTime || '',
+                        description: item.description || '', photoUrl: item.photo || '',
+                        qtyOrdered: '', orderDate: '', qtyReceived: '', receivedDate: '', remark: ''
+                    };
+
+                    // A one-off buy (tool, test gear, consumable) is deliberately NOT given a part
+                    // id and never reaches the inventory — it's bought, handed over, and that's it.
+                    if (item.kind === 'one-off') {
+                        return { ...common, partId: '', partNo: item.partNo || '', partName: item.itemName || item.partNo };
+                    }
+
+                    if (item.kind === 'new-stock') {
                         const newId = generateNextPartId();
                         const name = (item.type || '') + (item.brand ? ' ' + item.brand : '');
                         setStock(prev => [...prev, { id: newId, type: item.type, brand: item.brand, partNumber: item.partNumber, packageType: item.packageType, size: item.size, description: item.description, location: item.location, initialStock: 0, qrCode: '', photo: '', name, qty: 0 }]);
@@ -4163,32 +4387,28 @@
                             method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ action: 'createPart', id: newId, type: item.type, brand: item.brand, partNumber: item.partNumber, packageType: item.packageType, size: item.size, description: item.description, location: item.location })
                         }).catch(err => console.error('createPart failed', err));
-                        return { partId: newId, partName: name || item.partNumber, isNewPart: true, qty: Number(item.qty), purchaseLink: item.purchaseLink || '', photo: item.photo || '' };
+                        return { ...common, partId: newId, partNo: item.partNumber || '', partName: name || item.partNumber };
                     }
+
                     const found = stock.find(s => String(s.id) === String(item.partId));
-                    return { partId: item.partId, partName: found ? (found.name || found.partNumber) : item.partId, isNewPart: false, qty: Number(item.qty), purchaseLink: item.purchaseLink || '', photo: item.photo || '' };
+                    return { ...common, partId: item.partId, partNo: found ? (found.partNumber || '') : '', partName: found ? (found.name || found.partNumber) : item.partId };
                 });
 
-                const newRows = finalItems.map(it => ({
-                    requestId, timestamp, requestedBy: currentUserName, jobId: jobId || '', partId: it.partId, partName: it.partName,
-                    isNewPart: it.isNewPart, qty: it.qty, notes: notes || '', status: 'Requested', purchaser: '', platform: '', trackingNumber: '', trackingLink: '', lastUpdated: timestamp,
-                    purchaseLink: it.purchaseLink, photoUrl: it.photo
-                }));
-                setPartRequests(prev => [...prev, ...newRows]);
-
-                fetch(GOOGLE_SHEET_API, {
-                    method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'createPurchaseRequest', requestId, requestedBy: currentUserName, jobId: jobId || '', notes: notes || '', items: finalItems })
-                }).catch(err => console.error('createPurchaseRequest failed', err));
+                const newRequest = {
+                    id: requestId, requestId, timestamp, requestedBy: currentUserName, jobId: jobId || '',
+                    title: title || '', notes: notes || '', status: 'Requested', purchaser: '',
+                    platform: '', trackingNumber: '', trackingLink: '', lastUpdated: timestamp, items: finalItems
+                };
+                setPurchaseRequests(prev => [...prev, newRequest]);
 
                 if (jobId) {
-                    const detail = `Part request ${requestId} raised (${finalItems.length} item${finalItems.length > 1 ? 's' : ''}).`;
+                    const detail = `Purchase request ${requestId} raised (${finalItems.length} item${finalItems.length > 1 ? 's' : ''}).`;
                     const addRequestId = (r) => appendAuditEntry({ ...r, awaitingPart: true, awaitingPartRequestIds: [...new Set([...(r.awaitingPartRequestIds || []), requestId])] }, { type: 'parts', status: 'Awaiting Part — Repair Paused', by: userRole, byName: currentUserName, detail });
                     setRepairs(prev => prev.map(r => r.id === jobId ? addRequestId(r) : r));
                     setSelectedRepair(prev => (prev && prev.id === jobId) ? addRequestId(prev) : prev);
                 }
                 setTimeout(loadData, 1500);
-                alert(`Part request ${requestId} sent to Purchasing.`);
+                alert(`Purchase request ${requestId} sent to Purchasing.`);
             };
 
             // A job can have several part requests open at once (item 2 of the update this shipped
@@ -4196,27 +4416,35 @@
             // has been resolved (delivered or cancelled), not just the one that just changed.
             const handleUpdatePartRequestStatus = (requestId, updates) => {
                 const timestamp = new Date().toISOString();
-                const group = partRequests.filter(pr => pr.requestId === requestId);
-                const wasDelivered = group.some(pr => pr.status === 'Delivered');
+                const request = purchaseRequests.find(pr => pr.id === requestId);
+                if (!request) return;
+                const wasDelivered = request.status === 'Delivered';
                 const isResolved = updates.status === 'Delivered' || updates.status === 'Cancelled';
 
-                setPartRequests(prev => prev.map(pr => pr.requestId === requestId ? { ...pr, ...updates, purchaser: currentUserName, lastUpdated: timestamp } : pr));
+                setPurchaseRequests(prev => prev.map(pr => pr.id === requestId ? { ...pr, ...updates, purchaser: currentUserName, lastUpdated: timestamp } : pr));
 
-                fetch(GOOGLE_SHEET_API, {
-                    method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'updatePurchaseRequestStatus', requestId, purchaser: currentUserName, ...updates })
-                }).catch(err => console.error('updatePurchaseRequestStatus failed', err));
-
+                // Only stocked parts top up the inventory on delivery — a one-off buy has no part
+                // id by design. Quantities are summed per part id, since one request can list the
+                // same part on more than one line.
                 if (updates.status === 'Delivered' && !wasDelivered) {
-                    setStock(prev => prev.map(s => {
-                        const match = group.find(g => String(g.partId) === String(s.id));
-                        return match ? { ...s, qty: (Number(s.qty) || 0) + Number(match.qty) } : s;
-                    }));
+                    const receivedByPart = {};
+                    (updates.items || request.items || []).forEach(it => {
+                        if (!it.partId || it.kind === 'one-off') return;
+                        const received = it.qtyReceived === '' || it.qtyReceived === undefined ? Number(it.qty) : Number(it.qtyReceived);
+                        if (!received) return;
+                        receivedByPart[it.partId] = (receivedByPart[it.partId] || 0) + received;
+                    });
+                    if (Object.keys(receivedByPart).length) {
+                        setStock(prev => prev.map(s => {
+                            const received = receivedByPart[String(s.id)];
+                            return received ? { ...s, qty: (Number(s.qty) || 0) + received } : s;
+                        }));
+                    }
                 }
                 if (isResolved) {
-                    const linkedJobIds = [...new Set(group.map(g => g.jobId).filter(Boolean))];
+                    const linkedJobIds = [request.jobId].filter(Boolean);
                     if (linkedJobIds.length) {
-                        const detail = `Part request ${requestId} ${updates.status.toLowerCase()}.`;
+                        const detail = `Purchase request ${requestId} ${updates.status.toLowerCase()}.`;
                         const clearRequestId = (r) => {
                             const remaining = (r.awaitingPartRequestIds || []).filter(id => id !== requestId);
                             const resumed = remaining.length === 0;
@@ -4235,7 +4463,7 @@
                     <button onClick={() => onNavigate('dashboard')} className={`w-full flex items-center px-5 py-3.5 rounded-lg text-sm font-bold transition ${activeTab === 'dashboard' || activeTab === 'detail' || activeTab === 'new-repair' ? 'bg-brand-600 text-white shadow-lg' : 'hover:bg-brand-800 hover:text-white'}`}><i className="fa-solid fa-chart-line w-6 text-center mr-2"></i> Work Orders</button>
                     <button onClick={() => onNavigate('inventory')} className={`w-full flex items-center px-5 py-3.5 rounded-lg text-sm font-bold transition ${activeTab === 'inventory' ? 'bg-brand-600 text-white shadow-lg' : 'hover:bg-brand-800 hover:text-white'}`}><i className="fa-solid fa-server w-6 text-center mr-2"></i> Inventory Matrix</button>
                     {(perms.canRequestParts || perms.canManagePurchaseOrders) && (
-                        <button onClick={() => onNavigate('part-requests')} className={`w-full flex items-center px-5 py-3.5 rounded-lg text-sm font-bold transition ${activeTab === 'part-requests' ? 'bg-brand-600 text-white shadow-lg' : 'hover:bg-brand-800 hover:text-white'}`}><i className="fa-solid fa-boxes-packing w-6 text-center mr-2"></i> Part Requests</button>
+                        <button onClick={() => onNavigate('part-requests')} className={`w-full flex items-center px-5 py-3.5 rounded-lg text-sm font-bold transition ${activeTab === 'part-requests' ? 'bg-brand-600 text-white shadow-lg' : 'hover:bg-brand-800 hover:text-white'}`}><i className="fa-solid fa-cart-shopping w-6 text-center mr-2"></i> Purchase Requests</button>
                     )}
                     {perms.canManageUsers && (
                         <React.Fragment>
