@@ -33,7 +33,7 @@ talks to that function.
      [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (sign
      in with any Google account, click "Create API key")
    - *(optional)* `GEMINI_MODEL` = a different model id if the default
-     (`gemini-2.5-flash-lite`) is ever renamed or retired — check
+     (`gemini-3.5-flash-lite`) is ever renamed or retired — check
      [ai.google.dev/gemini-api/docs/models](https://ai.google.dev/gemini-api/docs/models)
      for the current flash-lite model id and set this without touching code.
    - *(optional)* `ALLOWED_ORIGIN` = your site's exact URL, once you have a
@@ -70,7 +70,7 @@ Then set `ALLOWED_ORIGIN` in Vercel to your GitHub Pages URL exactly (e.g.
 ## Cost note
 
 Every click of "AI-Polish from Internal" is one Gemini API call (model:
-`gemini-2.5-flash-lite`, Google's cheapest/fastest tier). On a free API key
+`gemini-3.5-flash-lite`, Google's cheapest/fastest tier). On a free API key
 this costs nothing, within Google's free-tier rate limits (currently on the
 order of 15 requests/minute and 1,000/day for this model — plenty for how
 often this button gets clicked). It only runs when someone explicitly clicks
