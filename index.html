@@ -3828,6 +3828,14 @@
             const [previewImage, setPreviewImage] = useState(null);
             const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+            // Freeze background scrolling while the mobile nav drawer is open. Without this,
+            // iOS Safari can keep the underlying page scrollable/interactive behind the fixed
+            // overlay, which shows up as dashboard content visually bleeding through the menu.
+            useEffect(() => {
+                document.body.style.overflow = mobileMenuOpen ? 'hidden' : '';
+                return () => { document.body.style.overflow = ''; };
+            }, [mobileMenuOpen]);
+
             const perms = applyPermRestrictions(ROLE_PERMISSIONS[userRole] || ROLE_PERMISSIONS.engineer, activeRestrictions);
 
             // --- Repairs / customers: load from Supabase once logged in, and persist
@@ -4305,7 +4313,7 @@
                         </button>
                     </div>
                     {mobileMenuOpen && (
-                        <div className="md:hidden fixed inset-0 z-20 bg-brand-900/98 pt-20 px-5 pb-6 flex flex-col no-print overflow-y-auto">
+                        <div className="md:hidden fixed inset-0 z-20 bg-brand-900 text-slate-300 pt-20 px-5 pb-6 flex flex-col no-print overflow-y-auto overscroll-contain transform-gpu">
                             <p className="text-[10px] font-black text-brand-500 uppercase tracking-widest mb-3 ml-2">Core Modules</p>
                             <div className="space-y-3">
                                 <NavLinks onNavigate={(tab) => { navigateTo(tab); setMobileMenuOpen(false); }} />
@@ -4316,7 +4324,7 @@
                         </div>
                     )}
 
-                    <main className="flex-1 h-screen overflow-y-auto relative pt-16 md:pt-0">
+                    <main className={`flex-1 h-screen relative pt-16 md:pt-0 ${mobileMenuOpen ? 'overflow-hidden' : 'overflow-y-auto'}`}>
                         <div className="p-6 md:p-10 max-w-[1400px] mx-auto">
                             {activeTab === 'dashboard' && <Dashboard repairs={repairs} perms={perms} userRole={userRole} currentUserName={currentUserName} onOpenRepair={onOpenRepair} navigateTo={navigateTo} viewersByJob={viewersByJob} currentTabId={TAB_ID} onRequestEdit={requestEditAccess} onDeleteRepair={deleteRepair} />}
                             {activeTab === 'detail' && selectedRepair && (

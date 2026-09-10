@@ -6,7 +6,7 @@
 // environment variable in the Vercel dashboard (Project Settings -> Environment
 // Variables). Get a free key at https://aistudio.google.com/apikey.
 // Optionally set GEMINI_MODEL to point at a different model without a code
-// change (defaults to gemini-2.5-flash-lite; check
+// change (defaults to gemini-3.5-flash-lite; check
 // https://ai.google.dev/gemini-api/docs/models for the current flash-lite id
 // if Google has since renamed/retired this one).
 //
@@ -19,7 +19,7 @@
 // Request:  POST { context?: {...}, fields: { <key>: "<internal text>", ... } }
 // Response: { fields: { <key>: "<polished text>", ... } }
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 
 // Fixed set of known field names across both report types (Diagnostic Quotation
 // and Repair & Engineering Report). Only the keys actually sent in the request
