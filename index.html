@@ -806,7 +806,9 @@
             const [departmentFilter, setDepartmentFilter] = useState('All');
             const [myJobsOnly, setMyJobsOnly] = useState(false);
             const [pendingTransferOnly, setPendingTransferOnly] = useState(false);
+            const [pendingMechTransferOnly, setPendingMechTransferOnly] = useState(false);
             const [awaitingPartOnly, setAwaitingPartOnly] = useState(false);
+            const [readyForPOOnly, setReadyForPOOnly] = useState(false);
             const [currentPage, setCurrentPage] = useState(1);
             const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
             // window.confirm() blocks the browser the same way window.alert() does (see
@@ -821,7 +823,9 @@
             if (departmentFilter !== 'All') filtered = filtered.filter(r => (r.department || 'Electronic') === departmentFilter);
             if (canFilterMine && myJobsOnly) filtered = filtered.filter(r => (r.assignedEngineer || '') === currentUserName);
             if (pendingTransferOnly) filtered = filtered.filter(r => r.pendingElectronicPickup);
+            if (pendingMechTransferOnly) filtered = filtered.filter(r => r.pendingMechanicalPickup);
             if (awaitingPartOnly) filtered = filtered.filter(r => r.awaitingPart);
+            if (readyForPOOnly) filtered = filtered.filter(r => r.readyForPO);
 
             // Jobs sharing a non-blank client PO with at least one other job in the filtered set are
             // shown together under a collapsible group header; everything else renders as a normal row.
@@ -856,7 +860,9 @@
             };
 
             const pendingTransferCount = repairs.filter(r => r.pendingElectronicPickup).length;
+            const pendingMechTransferCount = repairs.filter(r => r.pendingMechanicalPickup).length;
             const awaitingPartCount = repairs.filter(r => r.awaitingPart).length;
+            const readyForPOCount = repairs.filter(r => r.readyForPO).length;
             const colCount = perms.isDeliveryRole ? 8 : 9;
 
             // Cycled per PO group so adjacent groups on the dashboard are visually
@@ -880,7 +886,9 @@
                             {repair.id}
                             {repair.warrantyType === 'W' && <span className="ml-2 text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase align-middle">Warranty</span>}
                             {repair.pendingElectronicPickup && <span className="ml-2 text-[10px] bg-signal-100 text-signal-700 px-1.5 py-0.5 rounded font-bold uppercase align-middle"><i className="fa-solid fa-right-left mr-1"></i>New Transfer</span>}
+                            {repair.pendingMechanicalPickup && <span className="ml-2 text-[10px] bg-circuit-100 text-circuit-700 px-1.5 py-0.5 rounded font-bold uppercase align-middle"><i className="fa-solid fa-right-left mr-1"></i>New Transfer</span>}
                             {repair.awaitingPart && <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase align-middle"><i className="fa-solid fa-hourglass-half mr-1"></i>Waiting Part</span>}
+                            {repair.readyForPO && <span className="ml-2 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold uppercase align-middle"><i className="fa-solid fa-bell mr-1"></i>Ready for PO</span>}
                             {(() => {
                                 const viewers = (viewersByJob && viewersByJob[repair.id]) || [];
                                 if (!viewers.length) return null;
@@ -992,6 +1000,19 @@
                         </button>
                     )}
 
+                    {pendingMechTransferCount > 0 && (
+                        <button onClick={() => { setPendingMechTransferOnly(!pendingMechTransferOnly); setCurrentPage(1); }} className={`w-full flex items-center justify-between p-4 rounded-xl border-2 border-dashed transition text-left ${pendingMechTransferOnly ? 'border-circuit-600 bg-circuit-50' : 'border-circuit-300 bg-circuit-50/50 hover:bg-circuit-50'}`}>
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-circuit-100 text-circuit-700 flex items-center justify-center text-base"><i className="fa-solid fa-right-left"></i></div>
+                                <div>
+                                    <p className="text-sm font-black text-circuit-800">{pendingMechTransferCount} job{pendingMechTransferCount > 1 ? 's' : ''} handed over from Electronic Department — awaiting Mechanical pickup</p>
+                                    <p className="text-xs text-circuit-700 mt-0.5">Click to {pendingMechTransferOnly ? 'clear this filter' : 'show only these jobs'}</p>
+                                </div>
+                            </div>
+                            <i className={`fa-solid fa-filter text-circuit-600 ${pendingMechTransferOnly ? '' : 'opacity-40'}`}></i>
+                        </button>
+                    )}
+
                     {awaitingPartCount > 0 && (
                         <button onClick={() => { setAwaitingPartOnly(!awaitingPartOnly); setCurrentPage(1); }} className={`w-full flex items-center justify-between p-4 rounded-xl border-2 border-dashed transition text-left ${awaitingPartOnly ? 'border-amber-600 bg-amber-50' : 'border-amber-300 bg-amber-50/50 hover:bg-amber-50'}`}>
                             <div className="flex items-center gap-3">
@@ -1002,6 +1023,19 @@
                                 </div>
                             </div>
                             <i className={`fa-solid fa-filter text-amber-600 ${awaitingPartOnly ? '' : 'opacity-40'}`}></i>
+                        </button>
+                    )}
+
+                    {readyForPOCount > 0 && (
+                        <button onClick={() => { setReadyForPOOnly(!readyForPOOnly); setCurrentPage(1); }} className={`w-full flex items-center justify-between p-4 rounded-xl border-2 border-dashed transition text-left ${readyForPOOnly ? 'border-emerald-600 bg-emerald-50' : 'border-emerald-300 bg-emerald-50/50 hover:bg-emerald-50'}`}>
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-base"><i className="fa-solid fa-bell"></i></div>
+                                <div>
+                                    <p className="text-sm font-black text-emerald-800">{readyForPOCount} job{readyForPOCount > 1 ? 's' : ''} flagged by engineering as ready for PO</p>
+                                    <p className="text-xs text-emerald-700 mt-0.5">Click to {readyForPOOnly ? 'clear this filter' : 'show only these jobs'}</p>
+                                </div>
+                            </div>
+                            <i className={`fa-solid fa-filter text-emerald-600 ${readyForPOOnly ? '' : 'opacity-40'}`}></i>
                         </button>
                     )}
 
@@ -1470,7 +1504,8 @@
                     initialFindings: selectedRepair.diagnosticReport?.initialFindings || '',
                     correctiveAction: selectedRepair.diagnosticReport?.correctiveAction || '',
                     testResults: selectedRepair.diagnosticReport?.testResults || '',
-                    photos: selectedRepair.diagnosticReport?.photos || []
+                    photos: selectedRepair.diagnosticReport?.photos || [],
+                    videos: selectedRepair.diagnosticReport?.videos || []
                 });
                 const [custRep, setCustRep] = useState({
                     visualInspection: selectedRepair.customerReport?.visualInspection || '',
@@ -1498,6 +1533,13 @@
                 const holder = viewers[0] || null;
                 const isLockedByOther = !!(holder && holder.tabId !== currentTabId);
                 const lockState = holder ? { holderName: holder.name, holderRole: ROLE_LABELS[holder.role] || holder.role, tabId: holder.tabId } : null;
+
+                // Internal diagnostic/quotation findings are the engineer's to write up while
+                // diagnosing, but once actual repair work starts (Proceed Repair onward) that
+                // record should be locked in for reference -- from that point only an admin
+                // (who wasn't allowed to touch it earlier) can still correct it.
+                const repairInProgress = WORKFLOW_STEPS.indexOf(selectedRepair.status) >= WORKFLOW_STEPS.indexOf('Proceed Repair');
+                const canEditDiagnosticNow = userRole === 'superadmin' || (repairInProgress ? perms.canEditAdminPanel : perms.canEditDiagnostic);
 
                 useEffect(() => {
                     trackViewing(selectedRepair.id, Date.now());
@@ -1553,8 +1595,16 @@
                     if (!perms.allowedStatuses.includes(newStatus)) return alert(`Role restriction prohibits moving to ${newStatus}.`);
                     if (!(await askConfirm(`Are you sure you want to change status to: ${newStatus}?`))) return;
 
-                    const updated = appendAuditEntry({ ...selectedRepair, status: newStatus, pendingElectronicPickup: false }, { type: 'status', status: newStatus, by: userRole, byName: currentUserName, detail: `Status changed to ${newStatus}` });
+                    const updated = appendAuditEntry({ ...selectedRepair, status: newStatus, pendingElectronicPickup: false, pendingMechanicalPickup: false, readyForPO: false }, { type: 'status', status: newStatus, by: userRole, byName: currentUserName, detail: `Status changed to ${newStatus}` });
                     setRepairs(repairs.map(r => r.id === updated.id ? updated : r)); setSelectedRepair(updated);
+                };
+
+                const handleNotifyReadyForPO = () => {
+                    if (guardLock()) return;
+                    let updated = { ...selectedRepair, readyForPO: true };
+                    updated = appendAuditEntry(updated, { type: 'status', status: 'Ready for PO Requested', by: userRole, byName: currentUserName, detail: 'Diagnostic complete — flagged for admin to advance to Waiting PO' });
+                    setRepairs(repairs.map(r => r.id === updated.id ? updated : r)); setSelectedRepair(updated);
+                    showToast('Admin notified — this job now shows as ready for PO on the dashboard.');
                 };
 
                 const handleSaveDiag = () => {
@@ -1650,6 +1700,22 @@
                     e.target.value = null;
                 };
 
+                // Lives only in this admin-only form (activeSubTab === 'admin' already
+                // requires perms.canEditAdminPanel to render at all), so no separate
+                // permission check is needed for "PO only admin can access."
+                const handlePoDocUpload = (e) => {
+                    const files = Array.from(e.target.files);
+                    files.forEach(file => {
+                        const reader = new FileReader();
+                        reader.onload = (uploadEvent) => {
+                            const sizeMb = (file.size / (1024 * 1024)).toFixed(1) + ' MB';
+                            setEditData(prev => ({ ...prev, poDocuments: [...(prev.poDocuments || []), { name: file.name, size: sizeMb, dataUrl: uploadEvent.target.result }] }));
+                        };
+                        reader.readAsDataURL(file);
+                    });
+                    e.target.value = null;
+                };
+
                 const handleSaveDelivery = () => {
                     if (guardLock()) return;
                     let updated = { ...selectedRepair, deliveryNotes, deliveryInfo };
@@ -1667,16 +1733,25 @@
 
                 const handleTransferDepartment = async (targetDept) => {
                     if (guardLock()) return;
-                    if (!(await askConfirm(`Transfer this item to the ${targetDept} Department? It will re-enter that department's queue at the Diagnostic stage.`))) return;
+                    // A round trip (Mechanical -> Electronic -> back to Mechanical) means Mechanical
+                    // already diagnosed this item before handing it off; it should resume repairing,
+                    // not restart at Diagnostic as a fresh cross-department handoff would.
+                    const isReturnToMechanical = targetDept === 'Mechanical' && selectedRepair.transferredFromMechanical;
+                    const newStatus = isReturnToMechanical ? 'Repairing' : 'Diagnostic';
+                    const confirmMsg = isReturnToMechanical
+                        ? 'Transfer this item back to the Mechanical Department? It will resume at the Repairing stage.'
+                        : `Transfer this item to the ${targetDept} Department? It will re-enter that department's queue at the Diagnostic stage.`;
+                    if (!(await askConfirm(confirmMsg))) return;
                     const note = (await askPrompt(`Handover note for the ${targetDept} team (findings so far, reason for transfer):`, '')) || '';
                     let updated = {
                         ...selectedRepair,
                         department: targetDept,
-                        status: 'Diagnostic',
+                        status: newStatus,
                         transferredFromMechanical: targetDept === 'Electronic',
-                        pendingElectronicPickup: targetDept === 'Electronic'
+                        pendingElectronicPickup: targetDept === 'Electronic',
+                        pendingMechanicalPickup: targetDept === 'Mechanical'
                     };
-                    updated = appendAuditEntry(updated, { type: 'transfer', status: `Transferred to ${targetDept} Department`, by: userRole, byName: currentUserName, detail: note ? `Handover note: "${note}"` : `Item handed over to the ${targetDept} department for diagnostic.` });
+                    updated = appendAuditEntry(updated, { type: 'transfer', status: `Transferred to ${targetDept} Department`, by: userRole, byName: currentUserName, detail: note ? `Handover note: "${note}"` : `Item handed over to the ${targetDept} department${isReturnToMechanical ? ' to resume repair' : ' for diagnostic'}.` });
                     setRepairs(repairs.map(r => r.id === updated.id ? updated : r)); setSelectedRepair(updated);
                     showToast(`Transferred to ${targetDept} Department.`);
                 };
@@ -1888,6 +1963,20 @@
                         return (
                             <button disabled={dis} onClick={() => updateStatus(nextStep)} className="bg-brand-800 hover:bg-brand-900 text-white px-6 py-3 rounded-lg text-sm font-bold transition shadow-lg flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
                                 Advance Phase: {nextStep} <i className="fa-solid fa-angles-right ml-2"></i>
+                            </button>
+                        );
+                    }
+                    if (nextStep === 'Waiting PO') {
+                        if (selectedRepair.readyForPO) {
+                            return (
+                                <span className="text-xs font-bold text-emerald-700 italic flex items-center bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5">
+                                    <i className="fa-solid fa-circle-check mr-2"></i> Admin notified — awaiting PO advance
+                                </span>
+                            );
+                        }
+                        return (
+                            <button disabled={dis} onClick={handleNotifyReadyForPO} className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
+                                <i className="fa-solid fa-bell mr-2"></i> Notify Admin — Ready for PO
                             </button>
                         );
                     }
@@ -2190,6 +2279,31 @@
                                         <div><label className="block text-xs font-bold text-slate-700 mb-1">Country</label><SearchableCountrySelect disabled={isLockedByOther} value={editData.customerCountry} onChange={country => setEditData({...editData, customerCountry: country})} /></div>
                                     </div>
                                     <div><label className="block text-xs font-bold text-slate-700 mb-1">Purchase Order (PO) / Reference Tag</label><input disabled={isLockedByOther} type="text" placeholder="Fill in if it was missed at intake" value={editData.customerPo || ''} onChange={e => setEditData({...editData, customerPo: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-slate-50 disabled:opacity-50" /></div>
+                                    <div>
+                                        <div className="flex justify-between items-center mb-2">
+                                            <label className="block text-xs font-bold text-slate-700"><i className="fa-solid fa-file-invoice mr-1.5"></i>Purchase Order Document <span className="font-normal text-slate-400 normal-case">(admin only)</span></label>
+                                            {!isLockedByOther && (
+                                                <label className="bg-brand-800 hover:bg-brand-900 text-white px-3 py-1.5 rounded text-xs font-bold transition cursor-pointer shadow-sm flex items-center">
+                                                    <i className="fa-solid fa-upload mr-1.5"></i> Upload PO
+                                                    <input type="file" multiple onChange={handlePoDocUpload} className="hidden" />
+                                                </label>
+                                            )}
+                                        </div>
+                                        <div className="space-y-2">
+                                            {(editData.poDocuments || []).length === 0 && <p className="text-xs text-slate-400 italic">No PO document uploaded yet.</p>}
+                                            {(editData.poDocuments || []).map((doc, idx) => (
+                                                <div key={idx} className="flex gap-3 items-center bg-white p-3 border border-slate-200 rounded-lg shadow-sm">
+                                                    <div className="flex-1 min-w-0">
+                                                        <a href={doc.dataUrl} download={doc.name} className="font-bold text-brand-700 text-xs block truncate hover:underline"><i className="fa-regular fa-file-lines mr-2"></i>{doc.name}</a>
+                                                        <span className="text-[10px] text-slate-500">{doc.size}</span>
+                                                    </div>
+                                                    {!isLockedByOther && (
+                                                        <button type="button" onClick={() => { const d = (editData.poDocuments || []).filter((_, i) => i !== idx); setEditData({...editData, poDocuments: d}); }} className="text-red-600 hover:text-red-800 p-2"><i className="fa-solid fa-trash-can"></i></button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div className="space-y-5 pt-4 border-t border-slate-100">
@@ -2446,7 +2560,7 @@
                                 {(() => {
                                     const q = quoteMode === 'internal' ? quoteInternal : quoteCustomer;
                                     const setQ = quoteMode === 'internal' ? setQuoteInternal : setQuoteCustomer;
-                                    const editable = quoteMode === 'internal' ? perms.canEditDiagnostic : true;
+                                    const editable = quoteMode === 'internal' ? canEditDiagnosticNow : true;
                                     return (
                                         <div className="space-y-6 text-sm">
                                             <div>
@@ -2535,7 +2649,7 @@
 
                                 <PrintFooter terms="This quotation is valid for 30 days from the date of issue. Repair work will only commence upon receipt of a signed Purchase Order or written approval referencing this Job ID. Additional faults discovered during repair not covered above will be raised separately before proceeding." />
 
-                                {perms.canEditDiagnostic && (
+                                {canEditDiagnosticNow && (
                                     <div className="no-print pt-6 border-t border-slate-200">
                                         <button disabled={isLockedByOther} onClick={handleSaveQuote} className="bg-brand-800 hover:bg-brand-900 text-white px-8 py-3 rounded shadow-md text-sm font-bold transition flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
                                             <i className="fa-solid fa-floppy-disk mr-2"></i> Save Diagnostic Report
@@ -2598,17 +2712,17 @@
                                     <div className="space-y-6 text-sm">
                                         <div>
                                             <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest bg-slate-100 p-2 border-l-4 border-brand-800 mb-2">1. VISUAL INSPECTION & COMPONENT FAILURE ANALYSIS</h4>
-                                            <textarea rows="3" value={diag.visualInspection} onChange={e => setDiag({...diag, visualInspection: e.target.value})} readOnly={!perms.canEditDiagnostic || isLockedByOther} className={`w-full border rounded p-3 text-sm font-medium ${perms.canEditDiagnostic && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
+                                            <textarea rows="3" value={diag.visualInspection} onChange={e => setDiag({...diag, visualInspection: e.target.value})} readOnly={!canEditDiagnosticNow || isLockedByOther} className={`w-full border rounded p-3 text-sm font-medium ${canEditDiagnosticNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
                                         </div>
 
                                         <div>
                                             <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest bg-slate-100 p-2 border-l-4 border-brand-800 mb-2">2. ELECTRICAL & LOGIC SUB-SYSTEM DIAGNOSTIC FINDINGS</h4>
-                                            <textarea rows="3" value={diag.initialFindings} onChange={e => setDiag({...diag, initialFindings: e.target.value})} readOnly={!perms.canEditDiagnostic || isLockedByOther} className={`w-full border rounded p-3 text-sm font-medium ${perms.canEditDiagnostic && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
+                                            <textarea rows="3" value={diag.initialFindings} onChange={e => setDiag({...diag, initialFindings: e.target.value})} readOnly={!canEditDiagnosticNow || isLockedByOther} className={`w-full border rounded p-3 text-sm font-medium ${canEditDiagnosticNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
                                         </div>
 
                                         <div>
                                             <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest bg-slate-100 p-2 border-l-4 border-brand-800 mb-2">3. CORRECTIVE ENGINEERING ACTIONS TAKEN</h4>
-                                            <textarea rows="3" value={diag.correctiveAction || ''} onChange={e => setDiag({...diag, correctiveAction: e.target.value})} readOnly={!perms.canEditDiagnostic || isLockedByOther} placeholder="Detail component replacements..." className={`w-full border rounded p-3 text-sm font-medium ${perms.canEditDiagnostic && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
+                                            <textarea rows="3" value={diag.correctiveAction || ''} onChange={e => setDiag({...diag, correctiveAction: e.target.value})} readOnly={!canEditDiagnosticNow || isLockedByOther} placeholder="Detail component replacements..." className={`w-full border rounded p-3 text-sm font-medium ${canEditDiagnosticNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
                                         </div>
 
                                         <div className="pt-2">
@@ -2644,7 +2758,7 @@
                                         <div className="pt-2">
                                             <div className="flex justify-between items-center bg-slate-100 p-2 border-l-4 border-brand-800 mb-3">
                                                 <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest m-0">5. INSPECTION & REPAIR PHOTO DOCUMENTATION</h4>
-                                                {perms.canEditDiagnostic && !isLockedByOther && (
+                                                {canEditDiagnosticNow && !isLockedByOther && (
                                                     <label className="bg-brand-800 hover:bg-brand-900 text-white px-3 py-1 rounded text-[11px] font-bold transition cursor-pointer shadow-sm no-print flex items-center">
                                                         <i className="fa-solid fa-upload mr-1.5"></i> Upload from Device
                                                         <input type="file" accept="image/*" multiple onChange={(e) => {
@@ -2675,11 +2789,59 @@
                                                             </div>
                                                             <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-start gap-3">
                                                                 <div className="flex-1">
-                                                                    <input type="text" placeholder="Photo caption / description..." value={photo.caption} onChange={e => { const p = [...diag.photos]; p[idx].caption = e.target.value; setDiag({...diag, photos: p}); }} readOnly={!perms.canEditDiagnostic || isLockedByOther} className="w-full border border-slate-300 rounded p-2 text-sm bg-white font-medium text-slate-800 focus:ring-2 focus:ring-brand-500 outline-none print:hidden shadow-sm" />
+                                                                    <input type="text" placeholder="Photo caption / description..." value={photo.caption} onChange={e => { const p = [...diag.photos]; p[idx].caption = e.target.value; setDiag({...diag, photos: p}); }} readOnly={!canEditDiagnosticNow || isLockedByOther} className="w-full border border-slate-300 rounded p-2 text-sm bg-white font-medium text-slate-800 focus:ring-2 focus:ring-brand-500 outline-none print:hidden shadow-sm" />
                                                                     <div className="hidden print:block text-sm font-semibold text-slate-900 px-1 py-0.5">{photo.caption || 'Reference Image'}</div>
                                                                 </div>
-                                                                {perms.canEditDiagnostic && !isLockedByOther && (
+                                                                {canEditDiagnosticNow && !isLockedByOther && (
                                                                     <button type="button" onClick={() => { const p = diag.photos.filter((_, i) => i !== idx); setDiag({...diag, photos: p}); }} className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded transition no-print"><i className="fa-solid fa-trash-can"></i></button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="pt-2 no-print">
+                                            <div className="flex justify-between items-center bg-slate-100 p-2 border-l-4 border-brand-800 mb-3">
+                                                <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest m-0">TEST VIDEOS (INTERNAL RECORD ONLY)</h4>
+                                                {canEditDiagnosticNow && !isLockedByOther && (
+                                                    <label className="bg-brand-800 hover:bg-brand-900 text-white px-3 py-1 rounded text-[11px] font-bold transition cursor-pointer shadow-sm flex items-center">
+                                                        <i className="fa-solid fa-upload mr-1.5"></i> Upload Video
+                                                        <input type="file" accept="video/*" multiple onChange={(e) => {
+                                                            const files = Array.from(e.target.files);
+                                                            const maxBytes = 25 * 1024 * 1024;
+                                                            files.forEach(file => {
+                                                                if (file.size > maxBytes) {
+                                                                    alert(`"${file.name}" is too large (${(file.size / (1024*1024)).toFixed(1)} MB). Keep test video clips under 25 MB — trim the clip or lower its resolution and try again.`);
+                                                                    return;
+                                                                }
+                                                                const reader = new FileReader();
+                                                                reader.onload = (ev) => {
+                                                                    setDiag(prev => ({ ...prev, videos: [...(prev.videos || []), { url: ev.target.result, caption: file.name, size: (file.size / (1024*1024)).toFixed(1) + ' MB' }] }));
+                                                                };
+                                                                reader.readAsDataURL(file);
+                                                            });
+                                                            e.target.value = null;
+                                                        }} className="hidden" />
+                                                    </label>
+                                                )}
+                                            </div>
+                                            <p className="text-[11px] text-slate-400 italic mb-3">Not included in the customer-facing report or PDF export. Keep clips short (under 25 MB) — this isn't meant for long recordings.</p>
+                                            {(!diag.videos || diag.videos.length === 0) ? (
+                                                <p className="text-xs text-slate-400 italic bg-slate-50 p-3 rounded">No test videos attached.</p>
+                                            ) : (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                    {diag.videos.map((video, idx) => (
+                                                        <div key={idx} className="border border-slate-300 rounded-xl overflow-hidden bg-white shadow-sm">
+                                                            <video controls className="w-full h-64 md:h-72 bg-black" src={video.url}></video>
+                                                            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-start gap-3">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <input type="text" placeholder="Caption / description..." value={video.caption} onChange={e => { const v = [...diag.videos]; v[idx] = { ...v[idx], caption: e.target.value }; setDiag({...diag, videos: v}); }} readOnly={!canEditDiagnosticNow || isLockedByOther} className="w-full border border-slate-300 rounded p-2 text-sm bg-white font-medium text-slate-800 focus:ring-2 focus:ring-brand-500 outline-none shadow-sm" />
+                                                                    <span className="text-[10px] text-slate-500">{video.size}</span>
+                                                                </div>
+                                                                {canEditDiagnosticNow && !isLockedByOther && (
+                                                                    <button type="button" onClick={() => { const v = diag.videos.filter((_, i) => i !== idx); setDiag({...diag, videos: v}); }} className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded transition"><i className="fa-solid fa-trash-can"></i></button>
                                                                 )}
                                                             </div>
                                                         </div>
@@ -2690,7 +2852,7 @@
 
                                         <div>
                                             <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest bg-slate-100 p-2 border-l-4 border-brand-800 mb-2">6. BENCH STRESS TESTING & QUALITY CALIBRATION RESULTS</h4>
-                                            <textarea rows="3" value={diag.testResults || ''} onChange={e => setDiag({...diag, testResults: e.target.value})} readOnly={!perms.canEditDiagnostic || isLockedByOther} placeholder="Detail thermal test outcomes..." className={`w-full border rounded p-3 text-sm font-medium ${perms.canEditDiagnostic && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
+                                            <textarea rows="3" value={diag.testResults || ''} onChange={e => setDiag({...diag, testResults: e.target.value})} readOnly={!canEditDiagnosticNow || isLockedByOther} placeholder="Detail thermal test outcomes..." className={`w-full border rounded p-3 text-sm font-medium ${canEditDiagnosticNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
                                         </div>
                                     </div>
                                 ) : (
@@ -2841,7 +3003,7 @@
 
                                 <PrintFooter terms="This repair is warranted for 90 days from the date of delivery against defects in workmanship, covering only the components listed in Section 4 (Bill of Materials) above. This warranty excludes damage caused by improper installation, power surges, water ingress, or unauthorized modification after handover." />
 
-                                {perms.canEditDiagnostic && (
+                                {canEditDiagnosticNow && (
                                     <div className="no-print pt-6 border-t border-slate-200">
                                         <button disabled={isLockedByOther} onClick={handleSaveDiag} className="bg-brand-800 hover:bg-brand-900 text-white px-8 py-3 rounded shadow-md text-sm font-bold transition flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
                                             <i className="fa-solid fa-floppy-disk mr-2"></i> Save Engineering Reports
@@ -2942,8 +3104,8 @@
                         )}
 
                         {activeSubTab === 'delivery' && perms.isDeliveryRole && (
-                            <div className="space-y-6 no-print">
-                                <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 max-w-3xl">
+                            <div className="space-y-6">
+                                <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200 max-w-3xl no-print">
                                     <h3 className="text-xs font-black text-brand-800 uppercase tracking-widest mb-6 flex items-center"><i className="fa-solid fa-truck-fast mr-2"></i> Shipment Details</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
                                         <div><label className="block text-xs font-bold text-slate-700 mb-1">Courier / Shipping Method</label><input disabled={isLockedByOther} type="text" value={deliveryInfo.courier} onChange={e => setDeliveryInfo({...deliveryInfo, courier: e.target.value})} placeholder="e.g. City-Link, self pick-up" className="w-full border border-slate-300 rounded p-2.5 text-sm bg-slate-50 disabled:opacity-50" /></div>
