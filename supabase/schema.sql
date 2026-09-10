@@ -119,6 +119,28 @@ create trigger repairs_touch_updated_at
   for each row execute function public.touch_updated_at();
 
 -- ---------------------------------------------------------------------------
+-- Live sync: let every open browser tab/device receive changes to `repairs`
+-- and `customers` immediately (Supabase Realtime), instead of only seeing
+-- them after a manual page refresh. Safe to re-run — skips tables already
+-- in the publication.
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'repairs'
+  ) then
+    alter publication supabase_realtime add table public.repairs;
+  end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'customers'
+  ) then
+    alter publication supabase_realtime add table public.customers;
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- Done. Next steps (see AI_FEATURE_SETUP.md / chat instructions):
 --  1. Create the first login accounts under Authentication -> Users -> Add user
 --     (or let the app's User Management screen do it once the admin-users
