@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/email-sync.js": { "maxDuration": 60 },
+    "api/email-send.js": { "maxDuration": 30 },
+    "api/email-account.js": { "maxDuration": 30 }
+  }
+}

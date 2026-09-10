@@ -214,6 +214,83 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+-- email_accounts (each user's own connected @tcssb.com mailbox)
+--
+-- One row per user (id = their auth.users id), holding their cPanel IMAP/SMTP
+-- host settings and their mailbox password, encrypted with a server-only key
+-- before it ever reaches this table (see api/_lib/crypto.js) - Supabase itself
+-- never sees the plaintext password. Only ever read/written by the email-*
+-- serverless functions using the service_role key; RLS below only guards what an
+-- ordinary logged-in client can see, which is deliberately nothing but presence,
+-- since encrypted_password should never be selectable from the browser at all.
+-- ---------------------------------------------------------------------------
+create table if not exists public.email_accounts (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text not null,
+  imap_host text not null,
+  imap_port integer not null default 993,
+  smtp_host text not null,
+  smtp_port integer not null default 465,
+  encrypted_password text not null,
+  last_uid bigint not null default 0,
+  last_synced_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table public.email_accounts enable row level security;
+
+drop policy if exists "email_accounts_select_self" on public.email_accounts;
+create policy "email_accounts_select_self"
+  on public.email_accounts for select
+  using (id = auth.uid());
+
+-- No insert/update/delete policies: only the service_role key (server-side
+-- functions, which bypass RLS) writes this table, so a stolen anon-key session
+-- can at most read that a mailbox is connected - never its password.
+
+-- ---------------------------------------------------------------------------
+-- emails (synced inbox + sent copies for each user's connected mailbox)
+-- ---------------------------------------------------------------------------
+create table if not exists public.emails (
+  id text primary key,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.emails enable row level security;
+
+drop policy if exists "emails_select_owner" on public.emails;
+drop policy if exists "emails_update_owner" on public.emails;
+create policy "emails_select_owner"
+  on public.emails for select
+  using (owner_id = auth.uid());
+
+create policy "emails_update_owner"
+  on public.emails for update
+  using (owner_id = auth.uid())
+  with check (owner_id = auth.uid());
+
+-- No insert/delete policies for ordinary clients: rows are only ever created by
+-- email-sync.js / email-send.js (service_role). The update policy above exists
+-- so the app can mark a message read/unread directly from the browser.
+
+drop trigger if exists emails_touch_updated_at on public.emails;
+create trigger emails_touch_updated_at
+  before update on public.emails
+  for each row execute function public.touch_updated_at();
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'emails'
+  ) then
+    alter publication supabase_realtime add table public.emails;
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- Done. Next steps (see AI_FEATURE_SETUP.md / chat instructions):
 --  1. Create the first login accounts under Authentication -> Users -> Add user
 --     (or let the app's User Management screen do it once the admin-users
