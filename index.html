@@ -809,6 +809,10 @@
             const [awaitingPartOnly, setAwaitingPartOnly] = useState(false);
             const [currentPage, setCurrentPage] = useState(1);
             const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
+            // window.confirm() blocks the browser the same way window.alert() does (see
+            // ItemDetail for the fuller explanation) -- this is the same non-blocking
+            // stand-in, scoped locally since Dashboard only needs it for one action.
+            const [confirmDelete, setConfirmDelete] = useState(null); // the repair to delete, or null
 
             const canFilterMine = userRole === 'engineer' || userRole === 'qc' || userRole === 'mechanical';
 
@@ -918,7 +922,7 @@
                             <div className="flex items-center justify-end gap-2">
                                 {perms.canDeleteRecords && (
                                     <button
-                                        onClick={() => { if (window.confirm(`Permanently delete job ${repair.id} (${repair.customerCompany} — ${repair.itemName})? This cannot be undone.`)) onDeleteRepair(repair.id); }}
+                                        onClick={() => setConfirmDelete(repair)}
                                         title="Delete this job permanently"
                                         className="bg-white border border-slate-300 hover:border-red-500 hover:text-red-600 text-slate-400 w-9 h-9 rounded text-xs transition shadow-sm shrink-0"
                                     ><i className="fa-solid fa-trash-can"></i></button>
@@ -1076,6 +1080,18 @@
                             </div>
                         )}
                     </div>
+
+                    {confirmDelete && (
+                        <div className="fixed inset-0 z-[160] bg-black/40 flex items-center justify-center p-4" onClick={() => setConfirmDelete(null)}>
+                            <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+                                <p className="text-sm font-bold text-slate-800 mb-5">Permanently delete job {confirmDelete.id} ({confirmDelete.customerCompany} — {confirmDelete.itemName})? This cannot be undone.</p>
+                                <div className="flex justify-end gap-2">
+                                    <button onClick={() => setConfirmDelete(null)} className="px-4 py-2 rounded text-xs font-bold text-slate-600 hover:bg-slate-100 transition">Cancel</button>
+                                    <button onClick={() => { onDeleteRepair(confirmDelete.id); setConfirmDelete(null); }} className="px-4 py-2 rounded text-xs font-bold bg-red-700 hover:bg-red-800 text-white shadow-sm transition">Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         };
@@ -1094,15 +1110,42 @@
                 // same customer/PO/department N times -- everything above stays shared via
                 // `formData`, only the per-item fields below become a repeatable list.
                 const [bulkMode, setBulkMode] = useState(false);
-                const [bulkItems, setBulkItems] = useState([{ itemName: '', brand: '', model: '', serial: '' }]);
+                const [bulkItems, setBulkItems] = useState([{ itemName: '', brand: '', model: '', serial: '', photos: [], documents: [] }]);
+                const [expandedBulkRows, setExpandedBulkRows] = useState({});
                 const addBulkRow = () => {
                     setBulkItems(prev => {
                         const last = prev[prev.length - 1];
-                        return [...prev, { itemName: '', brand: last ? last.brand : '', model: '', serial: '' }];
+                        return [...prev, { itemName: '', brand: last ? last.brand : '', model: '', serial: '', photos: [], documents: [] }];
                     });
                 };
                 const updateBulkItem = (idx, patch) => setBulkItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it));
                 const removeBulkRow = (idx) => setBulkItems(prev => prev.filter((_, i) => i !== idx));
+                const toggleBulkRowExpanded = (idx) => setExpandedBulkRows(prev => ({ ...prev, [idx]: !prev[idx] }));
+
+                const handleBulkPhotoUpload = (idx, e) => {
+                    const files = Array.from(e.target.files);
+                    files.forEach(file => {
+                        const reader = new FileReader();
+                        reader.onload = (uploadEvent) => {
+                            setBulkItems(prev => prev.map((it, i) => i === idx ? { ...it, photos: [...it.photos, { url: uploadEvent.target.result, caption: file.name }] } : it));
+                        };
+                        reader.readAsDataURL(file);
+                    });
+                    e.target.value = null;
+                };
+
+                const handleBulkDocUpload = (idx, e) => {
+                    const files = Array.from(e.target.files);
+                    files.forEach(file => {
+                        const reader = new FileReader();
+                        reader.onload = (uploadEvent) => {
+                            const sizeMb = (file.size / (1024 * 1024)).toFixed(1) + ' MB';
+                            setBulkItems(prev => prev.map((it, i) => i === idx ? { ...it, documents: [...it.documents, { name: file.name, size: sizeMb, dataUrl: uploadEvent.target.result }] } : it));
+                        };
+                        reader.readAsDataURL(file);
+                    });
+                    e.target.value = null;
+                };
 
                 const handlePhotoUpload = (e) => {
                     const files = Array.from(e.target.files);
@@ -1161,7 +1204,7 @@
                         if (validItems.length === 0) { alert('Add at least one item before submitting.'); return; }
                         const incomplete = validItems.some(it => !it.itemName.trim() || !it.brand.trim() || !it.serial.trim());
                         if (incomplete) { alert('Every item row needs at least Equipment Description, OEM Brand, and Serial Number filled in (or remove the row).'); return; }
-                        const newRepairs = validItems.map((it, i) => buildRepairRecord({ itemName: it.itemName, brand: it.brand, model: it.model, serial: it.serial }, makeJobId(i)));
+                        const newRepairs = validItems.map((it, i) => buildRepairRecord({ itemName: it.itemName, brand: it.brand, model: it.model, serial: it.serial, photos: it.photos, documents: it.documents }, makeJobId(i)));
                         setRepairs([...newRepairs, ...repairs]);
                     } else {
                         const newRepair = buildRepairRecord({ itemName: formData.itemName, brand: formData.brand, model: formData.model, serial: formData.serial }, makeJobId(0));
@@ -1255,7 +1298,7 @@
 
                                     {bulkMode && (
                                         <div className="space-y-3">
-                                            <p className="text-xs text-slate-500">The client, PO, and department above apply to every item below — just list what's different per item. One Work Order is created per row.</p>
+                                            <p className="text-xs text-slate-500">The client, PO, and department above apply to every item below — just list what's different per item, and expand a row to attach that item's own photos/documents. One Work Order is created per row.</p>
                                             <div className="overflow-x-auto border border-slate-200 rounded-lg">
                                                 <table className="w-full text-left text-xs">
                                                     <thead className="bg-slate-100 text-slate-600 uppercase text-[10px]">
@@ -1265,20 +1308,82 @@
                                                             <th className="p-2">OEM Brand *</th>
                                                             <th className="p-2">Model / Part No.</th>
                                                             <th className="p-2">Serial No. *</th>
+                                                            <th className="p-2 w-20">Files</th>
                                                             <th className="p-2 w-8"></th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-slate-100 bg-white">
-                                                        {bulkItems.map((item, idx) => (
-                                                            <tr key={idx}>
-                                                                <td className="p-2 text-slate-400 font-mono">{idx + 1}</td>
-                                                                <td className="p-1"><input value={item.itemName} onChange={e => updateBulkItem(idx, { itemName: e.target.value })} className="w-full border border-slate-300 rounded p-1.5 text-xs" placeholder="e.g., HIACS Controller" /></td>
-                                                                <td className="p-1"><input list="brands-list" value={item.brand} onChange={e => updateBulkItem(idx, { brand: e.target.value })} className="w-full border border-slate-300 rounded p-1.5 text-xs" /></td>
-                                                                <td className="p-1"><input value={item.model} onChange={e => updateBulkItem(idx, { model: e.target.value })} className="w-full border border-slate-300 rounded p-1.5 text-xs" /></td>
-                                                                <td className="p-1"><input value={item.serial} onChange={e => updateBulkItem(idx, { serial: e.target.value })} className="w-full border border-slate-300 rounded p-1.5 text-xs font-mono" /></td>
-                                                                <td className="p-1 text-center">{bulkItems.length > 1 && <button type="button" onClick={() => removeBulkRow(idx)} className="text-red-500 hover:text-red-700 p-1"><i className="fa-solid fa-trash-can"></i></button>}</td>
-                                                            </tr>
-                                                        ))}
+                                                        {bulkItems.map((item, idx) => {
+                                                            const fileCount = item.photos.length + item.documents.length;
+                                                            const isExpanded = !!expandedBulkRows[idx];
+                                                            return (
+                                                            <React.Fragment key={idx}>
+                                                                <tr>
+                                                                    <td className="p-2 text-slate-400 font-mono">{idx + 1}</td>
+                                                                    <td className="p-1"><input value={item.itemName} onChange={e => updateBulkItem(idx, { itemName: e.target.value })} className="w-full border border-slate-300 rounded p-1.5 text-xs" placeholder="e.g., HIACS Controller" /></td>
+                                                                    <td className="p-1"><input list="brands-list" value={item.brand} onChange={e => updateBulkItem(idx, { brand: e.target.value })} className="w-full border border-slate-300 rounded p-1.5 text-xs" /></td>
+                                                                    <td className="p-1"><input value={item.model} onChange={e => updateBulkItem(idx, { model: e.target.value })} className="w-full border border-slate-300 rounded p-1.5 text-xs" /></td>
+                                                                    <td className="p-1"><input value={item.serial} onChange={e => updateBulkItem(idx, { serial: e.target.value })} className="w-full border border-slate-300 rounded p-1.5 text-xs font-mono" /></td>
+                                                                    <td className="p-1">
+                                                                        <button type="button" onClick={() => toggleBulkRowExpanded(idx)} className={`w-full px-2 py-1.5 rounded text-[11px] font-bold border transition ${isExpanded ? 'bg-brand-800 text-white border-brand-800' : 'bg-white text-slate-600 border-slate-300 hover:border-slate-400'}`}>
+                                                                            <i className="fa-solid fa-paperclip mr-1"></i>{fileCount || ''} {isExpanded ? '▲' : '▼'}
+                                                                        </button>
+                                                                    </td>
+                                                                    <td className="p-1 text-center">{bulkItems.length > 1 && <button type="button" onClick={() => removeBulkRow(idx)} className="text-red-500 hover:text-red-700 p-1"><i className="fa-solid fa-trash-can"></i></button>}</td>
+                                                                </tr>
+                                                                {isExpanded && (
+                                                                    <tr>
+                                                                        <td colSpan={7} className="p-3 bg-slate-50 border-t border-slate-200">
+                                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                                                <div>
+                                                                                    <div className="flex justify-between items-center mb-2">
+                                                                                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider"><i className="fa-solid fa-camera mr-1"></i>Photos for this item</span>
+                                                                                        <label className="bg-brand-800 hover:bg-brand-900 text-white px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer shadow-sm">
+                                                                                            <i className="fa-solid fa-upload mr-1"></i>Upload
+                                                                                            <input type="file" accept="image/*" multiple onChange={e => handleBulkPhotoUpload(idx, e)} className="hidden" />
+                                                                                        </label>
+                                                                                    </div>
+                                                                                    <div className="space-y-2">
+                                                                                        {item.photos.length === 0 && <p className="text-[11px] text-slate-400 italic">No photos attached.</p>}
+                                                                                        {item.photos.map((photo, pIdx) => (
+                                                                                            <div key={pIdx} className="flex gap-2 items-center bg-white p-2 border border-slate-200 rounded shadow-sm">
+                                                                                                <div className="w-10 h-10 bg-slate-100 rounded border overflow-hidden shrink-0 cursor-pointer" onClick={() => setPreviewImage(photo.url)}>
+                                                                                                    <img src={photo.url} alt="Preview" className="w-full h-full object-cover" />
+                                                                                                </div>
+                                                                                                <input type="text" placeholder="Caption" value={photo.caption} onChange={e => { const p = [...item.photos]; p[pIdx] = { ...p[pIdx], caption: e.target.value }; updateBulkItem(idx, { photos: p }); }} className="flex-1 border border-slate-300 rounded p-1.5 text-[11px]" />
+                                                                                                <button type="button" onClick={() => updateBulkItem(idx, { photos: item.photos.filter((_, i) => i !== pIdx) })} className="text-red-600 hover:text-red-800 p-1"><i className="fa-solid fa-trash-can text-xs"></i></button>
+                                                                                            </div>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <div className="flex justify-between items-center mb-2">
+                                                                                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider"><i className="fa-solid fa-folder-open mr-1"></i>Documents for this item</span>
+                                                                                        <label className="bg-brand-800 hover:bg-brand-900 text-white px-2 py-1 rounded text-[10px] font-bold transition cursor-pointer shadow-sm">
+                                                                                            <i className="fa-solid fa-upload mr-1"></i>Upload
+                                                                                            <input type="file" multiple onChange={e => handleBulkDocUpload(idx, e)} className="hidden" />
+                                                                                        </label>
+                                                                                    </div>
+                                                                                    <div className="space-y-2">
+                                                                                        {item.documents.length === 0 && <p className="text-[11px] text-slate-400 italic">No documents attached.</p>}
+                                                                                        {item.documents.map((doc, dIdx) => (
+                                                                                            <div key={dIdx} className="flex gap-2 items-center bg-white p-2 border border-slate-200 rounded shadow-sm">
+                                                                                                <div className="flex-1 min-w-0">
+                                                                                                    <span className="font-bold text-slate-800 text-[11px] block truncate"><i className="fa-regular fa-file-lines text-brand-600 mr-1.5"></i>{doc.name}</span>
+                                                                                                    <span className="text-[10px] text-slate-500">{doc.size}</span>
+                                                                                                </div>
+                                                                                                <button type="button" onClick={() => updateBulkItem(idx, { documents: item.documents.filter((_, i) => i !== dIdx) })} className="text-red-600 hover:text-red-800 p-1"><i className="fa-solid fa-trash-can text-xs"></i></button>
+                                                                                            </div>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                )}
+                                                            </React.Fragment>
+                                                            );
+                                                        })}
                                                     </tbody>
                                                 </table>
                                             </div>
@@ -1289,47 +1394,51 @@
 
                                 <div><label className="block text-xs font-bold text-slate-700 mb-1">Client Reported Anomalies {bulkMode && '(applies to all items above)'}</label><textarea rows="3" value={formData.faultDescription} onChange={e => setFormData({...formData, faultDescription: e.target.value})} className="w-full border border-slate-300 rounded p-2.5 text-sm bg-white" placeholder="Detail the fault symptoms..."></textarea></div>
 
-                                <div className="pt-4 border-t border-slate-200">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider"><i className="fa-solid fa-camera mr-1.5"></i> Item Intake Photos (Reference)</label>
-                                        <label className="bg-brand-800 hover:bg-brand-900 text-white px-3 py-1.5 rounded text-xs font-bold transition cursor-pointer shadow-sm flex items-center">
-                                            <i className="fa-solid fa-upload mr-1.5"></i> Upload from Device
-                                            <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} className="hidden" />
-                                        </label>
-                                    </div>
-                                    <div className="space-y-3">
-                                        {formData.photos.map((photo, idx) => (
-                                            <div key={idx} className="flex gap-3 items-center bg-white p-3 border border-slate-200 rounded-lg shadow-sm">
-                                                <div className="w-14 h-14 bg-slate-100 rounded border overflow-hidden shrink-0 cursor-pointer" onClick={() => setPreviewImage(photo.url)}>
-                                                    <img src={photo.url} alt="Preview" className="w-full h-full object-cover" />
-                                                </div>
-                                                <input type="text" placeholder="Caption / Description" value={photo.caption} onChange={e => { const p = [...formData.photos]; p[idx].caption = e.target.value; setFormData({...formData, photos: p}); }} className="flex-1 border border-slate-300 rounded p-2 text-xs" />
-                                                <button type="button" onClick={() => { const p = formData.photos.filter((_, i) => i !== idx); setFormData({...formData, photos: p}); }} className="text-red-600 hover:text-red-800 p-2"><i className="fa-solid fa-trash-can"></i></button>
+                                {!bulkMode && (
+                                    <React.Fragment>
+                                        <div className="pt-4 border-t border-slate-200">
+                                            <div className="flex justify-between items-center mb-3">
+                                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider"><i className="fa-solid fa-camera mr-1.5"></i> Item Intake Photos (Reference)</label>
+                                                <label className="bg-brand-800 hover:bg-brand-900 text-white px-3 py-1.5 rounded text-xs font-bold transition cursor-pointer shadow-sm flex items-center">
+                                                    <i className="fa-solid fa-upload mr-1.5"></i> Upload from Device
+                                                    <input type="file" accept="image/*" multiple onChange={handlePhotoUpload} className="hidden" />
+                                                </label>
                                             </div>
-                                        ))}
-                                    </div>
-                                </div>
+                                            <div className="space-y-3">
+                                                {formData.photos.map((photo, idx) => (
+                                                    <div key={idx} className="flex gap-3 items-center bg-white p-3 border border-slate-200 rounded-lg shadow-sm">
+                                                        <div className="w-14 h-14 bg-slate-100 rounded border overflow-hidden shrink-0 cursor-pointer" onClick={() => setPreviewImage(photo.url)}>
+                                                            <img src={photo.url} alt="Preview" className="w-full h-full object-cover" />
+                                                        </div>
+                                                        <input type="text" placeholder="Caption / Description" value={photo.caption} onChange={e => { const p = [...formData.photos]; p[idx].caption = e.target.value; setFormData({...formData, photos: p}); }} className="flex-1 border border-slate-300 rounded p-2 text-xs" />
+                                                        <button type="button" onClick={() => { const p = formData.photos.filter((_, i) => i !== idx); setFormData({...formData, photos: p}); }} className="text-red-600 hover:text-red-800 p-2"><i className="fa-solid fa-trash-can"></i></button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
 
-                                <div className="pt-4 border-t border-slate-200">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider"><i className="fa-solid fa-folder-open mr-1.5"></i> Equipment Documents (Manuals, Programs, Schematics)</label>
-                                        <label className="bg-brand-800 hover:bg-brand-900 text-white px-3 py-1.5 rounded text-xs font-bold transition cursor-pointer shadow-sm flex items-center">
-                                            <i className="fa-solid fa-upload mr-1.5"></i> + Add Document
-                                            <input type="file" multiple onChange={handleDocUpload} className="hidden" />
-                                        </label>
-                                    </div>
-                                    <div className="space-y-3">
-                                        {formData.documents.map((doc, idx) => (
-                                            <div key={idx} className="flex gap-3 items-center bg-white p-3 border border-slate-200 rounded-lg shadow-sm">
-                                                <div className="flex-1">
-                                                    <span className="font-bold text-slate-800 text-xs block"><i className="fa-regular fa-file-lines text-brand-600 mr-2"></i> {doc.name}</span>
-                                                    <span className="text-[10px] text-slate-500">{doc.size}</span>
-                                                </div>
-                                                <button type="button" onClick={() => { const d = formData.documents.filter((_, i) => i !== idx); setFormData({...formData, documents: d}); }} className="text-red-600 hover:text-red-800 p-2"><i className="fa-solid fa-trash-can"></i></button>
+                                        <div className="pt-4 border-t border-slate-200">
+                                            <div className="flex justify-between items-center mb-3">
+                                                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider"><i className="fa-solid fa-folder-open mr-1.5"></i> Equipment Documents (Manuals, Programs, Schematics)</label>
+                                                <label className="bg-brand-800 hover:bg-brand-900 text-white px-3 py-1.5 rounded text-xs font-bold transition cursor-pointer shadow-sm flex items-center">
+                                                    <i className="fa-solid fa-upload mr-1.5"></i> + Add Document
+                                                    <input type="file" multiple onChange={handleDocUpload} className="hidden" />
+                                                </label>
                                             </div>
-                                        ))}
-                                    </div>
-                                </div>
+                                            <div className="space-y-3">
+                                                {formData.documents.map((doc, idx) => (
+                                                    <div key={idx} className="flex gap-3 items-center bg-white p-3 border border-slate-200 rounded-lg shadow-sm">
+                                                        <div className="flex-1">
+                                                            <span className="font-bold text-slate-800 text-xs block"><i className="fa-regular fa-file-lines text-brand-600 mr-2"></i> {doc.name}</span>
+                                                            <span className="text-[10px] text-slate-500">{doc.size}</span>
+                                                        </div>
+                                                        <button type="button" onClick={() => { const d = formData.documents.filter((_, i) => i !== idx); setFormData({...formData, documents: d}); }} className="text-red-600 hover:text-red-800 p-2"><i className="fa-solid fa-trash-can"></i></button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </React.Fragment>
+                                )}
                             </div>
 
                             <div className="flex justify-end pt-4">
@@ -1419,10 +1528,30 @@
                 };
                 useEffect(() => () => clearTimeout(toastTimerRef.current), []);
 
-                const updateStatus = (newStatus) => {
+                // Same reasoning as the toast above, applied to confirmation prompts:
+                // window.confirm() blocks the browser exactly like window.alert() does,
+                // so every guarded action (change status, transfer department, delete...)
+                // was tripping the same "blocked UI" performance warning. This renders an
+                // equivalent Yes/No dialog without freezing the page while it's open.
+                const [confirmState, setConfirmState] = useState(null); // { message, resolve }
+                const askConfirm = (message) => new Promise(resolve => setConfirmState({ message, resolve }));
+                const resolveConfirm = (answer) => {
+                    if (confirmState) confirmState.resolve(answer);
+                    setConfirmState(null);
+                };
+
+                // Same idea for window.prompt() -- a free-text version of the confirm dialog above.
+                const [promptState, setPromptState] = useState(null); // { message, defaultValue, resolve }
+                const askPrompt = (message, defaultValue = '') => new Promise(resolve => setPromptState({ message, defaultValue, resolve }));
+                const resolvePrompt = (answer) => {
+                    if (promptState) promptState.resolve(answer);
+                    setPromptState(null);
+                };
+
+                const updateStatus = async (newStatus) => {
                     if (guardLock()) return;
                     if (!perms.allowedStatuses.includes(newStatus)) return alert(`Role restriction prohibits moving to ${newStatus}.`);
-                    if (!window.confirm(`Are you sure you want to change status to: ${newStatus}?`)) return;
+                    if (!(await askConfirm(`Are you sure you want to change status to: ${newStatus}?`))) return;
 
                     const updated = appendAuditEntry({ ...selectedRepair, status: newStatus, pendingElectronicPickup: false }, { type: 'status', status: newStatus, by: userRole, byName: currentUserName, detail: `Status changed to ${newStatus}` });
                     setRepairs(repairs.map(r => r.id === updated.id ? updated : r)); setSelectedRepair(updated);
@@ -1445,7 +1574,7 @@
                 };
 
                 const handleSyncToCustomer = async () => {
-                    if(!window.confirm("Use AI to rewrite the internal diagnostic details into polished customer-facing language (photos and parts are copied as-is)? You can edit the result afterwards.")) return;
+                    if(!(await askConfirm("Use AI to rewrite the internal diagnostic details into polished customer-facing language (photos and parts are copied as-is)? You can edit the result afterwards."))) return;
                     const rawFields = { visualInspection: diag.visualInspection, initialFindings: diag.initialFindings, correctiveAction: diag.correctiveAction, testResults: diag.testResults };
                     const carryOver = { photos: [...(diag.photos || [])], partsUsed: (selectedRepair.partsUsed || []).map(p => ({ id: p.id, name: p.name, qty: p.qty })) };
                     setPolishingCustomer(true);
@@ -1458,7 +1587,7 @@
                         showToast("Internal report polished into customer-facing language. Review before saving.");
                     } catch (err) {
                         console.error('AI polish failed:', err);
-                        if (window.confirm(`AI rewrite failed (${err.message}). Copy the raw internal text instead? You can edit it manually.`)) {
+                        if (await askConfirm(`AI rewrite failed (${err.message}). Copy the raw internal text instead? You can edit it manually.`)) {
                             setCustRep({ ...rawFields, ...carryOver });
                         }
                     } finally {
@@ -1467,7 +1596,7 @@
                 };
 
                 const handleSyncQuoteToCustomer = async () => {
-                    if(!window.confirm("Use AI to rewrite the internal diagnostic findings into polished customer-facing language for the quotation? You can edit the result afterwards.")) return;
+                    if(!(await askConfirm("Use AI to rewrite the internal diagnostic findings into polished customer-facing language for the quotation? You can edit the result afterwards."))) return;
                     const rawFields = { visualInspection: quoteInternal.visualInspection, probableCause: quoteInternal.probableCause, recommendedAction: quoteInternal.recommendedAction, notes: quoteInternal.notes };
                     setPolishingQuote(true);
                     try {
@@ -1479,7 +1608,7 @@
                         showToast("Internal diagnostic polished into customer-facing quotation language. Review before saving.");
                     } catch (err) {
                         console.error('AI polish failed:', err);
-                        if (window.confirm(`AI rewrite failed (${err.message}). Copy the raw internal text instead? You can edit it manually.`)) {
+                        if (await askConfirm(`AI rewrite failed (${err.message}). Copy the raw internal text instead? You can edit it manually.`)) {
                             setQuoteCustomer({ ...quoteInternal });
                         }
                     } finally {
@@ -1536,10 +1665,10 @@
                     setRepairs(repairs.map(r => r.id === updated.id ? updated : r)); setSelectedRepair(updated);
                 };
 
-                const handleTransferDepartment = (targetDept) => {
+                const handleTransferDepartment = async (targetDept) => {
                     if (guardLock()) return;
-                    if (!window.confirm(`Transfer this item to the ${targetDept} Department? It will re-enter that department's queue at the Diagnostic stage.`)) return;
-                    const note = window.prompt(`Handover note for the ${targetDept} team (findings so far, reason for transfer):`, '') || '';
+                    if (!(await askConfirm(`Transfer this item to the ${targetDept} Department? It will re-enter that department's queue at the Diagnostic stage.`))) return;
+                    const note = (await askPrompt(`Handover note for the ${targetDept} team (findings so far, reason for transfer):`, '')) || '';
                     let updated = {
                         ...selectedRepair,
                         department: targetDept,
@@ -1572,9 +1701,9 @@
                     e.target.value = null;
                 };
 
-                const handleDeleteMechanicalReport = (idx) => {
+                const handleDeleteMechanicalReport = async (idx) => {
                     if (guardLock()) return;
-                    if (!window.confirm('Remove this mechanical report attachment?')) return;
+                    if (!(await askConfirm('Remove this mechanical report attachment?'))) return;
                     const reportName = (selectedRepair.mechanicalReports || [])[idx]?.name || 'report';
                     let updated = { ...selectedRepair, mechanicalReports: (selectedRepair.mechanicalReports || []).filter((_, i) => i !== idx) };
                     updated = appendAuditEntry(updated, { type: 'edit', status: 'Mechanical Report Removed', by: userRole, byName: currentUserName, detail: `Removed mechanical report: ${reportName}` });
@@ -1779,6 +1908,29 @@
                                 <i className="fa-solid fa-circle-check text-emerald-400"></i>
                                 <span>{toast}</span>
                             </div>
+                        )}
+                        {confirmState && (
+                            <div className="fixed inset-0 z-[160] bg-black/40 flex items-center justify-center p-4 no-print" onClick={() => resolveConfirm(false)}>
+                                <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+                                    <p className="text-sm font-bold text-slate-800 mb-5">{confirmState.message}</p>
+                                    <div className="flex justify-end gap-2">
+                                        <button onClick={() => resolveConfirm(false)} className="px-4 py-2 rounded text-xs font-bold text-slate-600 hover:bg-slate-100 transition">Cancel</button>
+                                        <button onClick={() => resolveConfirm(true)} className="px-4 py-2 rounded text-xs font-bold bg-brand-800 hover:bg-brand-900 text-white shadow-sm transition">Confirm</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        {promptState && (
+                            <form onSubmit={(e) => { e.preventDefault(); resolvePrompt(new FormData(e.target).get('value') || ''); }} className="fixed inset-0 z-[160] bg-black/40 flex items-center justify-center p-4 no-print">
+                                <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-sm p-6">
+                                    <p className="text-sm font-bold text-slate-800 mb-3">{promptState.message}</p>
+                                    <input name="value" autoFocus defaultValue={promptState.defaultValue} className="w-full border border-slate-300 rounded p-2.5 text-sm mb-5" />
+                                    <div className="flex justify-end gap-2">
+                                        <button type="button" onClick={() => resolvePrompt(null)} className="px-4 py-2 rounded text-xs font-bold text-slate-600 hover:bg-slate-100 transition">Cancel</button>
+                                        <button type="submit" className="px-4 py-2 rounded text-xs font-bold bg-brand-800 hover:bg-brand-900 text-white shadow-sm transition">OK</button>
+                                    </div>
+                                </div>
+                            </form>
                         )}
                         <div className="flex justify-between items-center no-print mb-2">
                             <button onClick={() => navigateTo('dashboard')} className="flex items-center text-slate-500 hover:text-brand-800 transition text-sm font-bold">
@@ -2115,7 +2267,7 @@
                                 <p className="text-xs text-slate-500 mb-4">Permanently delete this job record. This cannot be undone — use it only for jobs keyed in by mistake, not real work orders that just need correcting above.</p>
                                 <button
                                     disabled={isLockedByOther}
-                                    onClick={() => { if (window.confirm(`Permanently delete job ${selectedRepair.id} (${selectedRepair.customerCompany} — ${selectedRepair.itemName})? This cannot be undone.`)) onDeleteRepair(selectedRepair.id); }}
+                                    onClick={async () => { if (await askConfirm(`Permanently delete job ${selectedRepair.id} (${selectedRepair.customerCompany} — ${selectedRepair.itemName})? This cannot be undone.`)) onDeleteRepair(selectedRepair.id); }}
                                     className="bg-red-700 hover:bg-red-800 text-white px-6 py-2.5 rounded text-sm font-bold shadow-sm transition disabled:opacity-40 disabled:cursor-not-allowed"
                                 ><i className="fa-solid fa-trash-can mr-2"></i>Delete This Job Permanently</button>
                             </div>
