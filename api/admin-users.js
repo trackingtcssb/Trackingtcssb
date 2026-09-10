@@ -5,7 +5,7 @@
 // 'superadmin' BEFORE doing anything privileged. Never trust a role the client claims.
 //
 // Deploy: set these two environment variables in the Vercel project (Project Settings ->
-// Environment Variables), alongside the existing ANTHROPIC_API_KEY:
+// Environment Variables), alongside the existing GEMINI_API_KEY:
 //   SUPABASE_URL              same value as SUPABASE_URL in index.html
 //   SUPABASE_SERVICE_ROLE_KEY from Supabase Dashboard -> Project Settings -> API ->
 //                              "service_role" secret key. NEVER put this in index.html,

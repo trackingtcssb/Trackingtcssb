@@ -194,7 +194,7 @@
         };
 
         // Sends internal report text to the /api/polish-report serverless function, which
-        // holds the Claude API key server-side and returns customer-facing rewrites of the
+        // holds the Gemini API key server-side and returns customer-facing rewrites of the
         // same fields. Throws on failure — callers decide whether to fall back to a raw copy.
         const polishReportFields = async (context, fields) => {
             const res = await fetch(POLISH_REPORT_ENDPOINT, {
