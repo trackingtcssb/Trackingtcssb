@@ -92,10 +92,34 @@ create table public.repairs (
 
 alter table public.repairs enable row level security;
 
-create policy "repairs_all_authenticated"
-  on public.repairs for all
+-- Replaces the original single "for all" policy with per-action ones so delete can be
+-- locked down separately. Safe to re-run on a database that already has the old policy,
+-- the new ones, or (on a fresh install) neither.
+drop policy if exists "repairs_all_authenticated" on public.repairs;
+drop policy if exists "repairs_select_authenticated" on public.repairs;
+drop policy if exists "repairs_insert_authenticated" on public.repairs;
+drop policy if exists "repairs_update_authenticated" on public.repairs;
+drop policy if exists "repairs_delete_admin" on public.repairs;
+
+create policy "repairs_select_authenticated"
+  on public.repairs for select
+  using (auth.role() = 'authenticated');
+
+create policy "repairs_insert_authenticated"
+  on public.repairs for insert
+  with check (auth.role() = 'authenticated');
+
+create policy "repairs_update_authenticated"
+  on public.repairs for update
   using (auth.role() = 'authenticated')
   with check (auth.role() = 'authenticated');
+
+-- Deleting a job record is permanent (unlike every other mutation here, which is an
+-- upsert), so it's restricted to admin/superadmin at the database level -- the app's
+-- own canDeleteRecords check only hides the button, it can't stop a direct API call.
+create policy "repairs_delete_admin"
+  on public.repairs for delete
+  using (public.current_user_role() in ('admin', 'superadmin'));
 
 -- ---------------------------------------------------------------------------
 -- keep updated_at fresh on every write
@@ -117,6 +141,28 @@ create trigger customers_touch_updated_at
 create trigger repairs_touch_updated_at
   before update on public.repairs
   for each row execute function public.touch_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- Live sync: let every open browser tab/device receive changes to `repairs`
+-- and `customers` immediately (Supabase Realtime), instead of only seeing
+-- them after a manual page refresh. Safe to re-run — skips tables already
+-- in the publication.
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'repairs'
+  ) then
+    alter publication supabase_realtime add table public.repairs;
+  end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'customers'
+  ) then
+    alter publication supabase_realtime add table public.customers;
+  end if;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- Done. Next steps (see AI_FEATURE_SETUP.md / chat instructions):
