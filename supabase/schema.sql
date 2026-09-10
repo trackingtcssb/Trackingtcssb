@@ -122,6 +122,44 @@ create policy "repairs_delete_admin"
   using (public.current_user_role() in ('admin', 'superadmin'));
 
 -- ---------------------------------------------------------------------------
+-- purchase_requests (anything the team asks Purchasing to buy)
+--
+-- One row per request, with all its line items inside `data.items` -- mirroring
+-- the "one sheet per purchase list" way this was tracked in Excel before. Items
+-- can be stock parts or one-off buys (tools, test equipment, consumables) that
+-- are deliberately never added to the inventory.
+-- ---------------------------------------------------------------------------
+create table if not exists public.purchase_requests (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.purchase_requests enable row level security;
+
+drop policy if exists "purchase_requests_select_authenticated" on public.purchase_requests;
+drop policy if exists "purchase_requests_insert_authenticated" on public.purchase_requests;
+drop policy if exists "purchase_requests_update_authenticated" on public.purchase_requests;
+drop policy if exists "purchase_requests_delete_admin" on public.purchase_requests;
+
+create policy "purchase_requests_select_authenticated"
+  on public.purchase_requests for select
+  using (auth.role() = 'authenticated');
+
+create policy "purchase_requests_insert_authenticated"
+  on public.purchase_requests for insert
+  with check (auth.role() = 'authenticated');
+
+create policy "purchase_requests_update_authenticated"
+  on public.purchase_requests for update
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
+create policy "purchase_requests_delete_admin"
+  on public.purchase_requests for delete
+  using (public.current_user_role() in ('admin', 'superadmin'));
+
+-- ---------------------------------------------------------------------------
 -- keep updated_at fresh on every write
 -- ---------------------------------------------------------------------------
 create or replace function public.touch_updated_at()
@@ -140,6 +178,11 @@ create trigger customers_touch_updated_at
 
 create trigger repairs_touch_updated_at
   before update on public.repairs
+  for each row execute function public.touch_updated_at();
+
+drop trigger if exists purchase_requests_touch_updated_at on public.purchase_requests;
+create trigger purchase_requests_touch_updated_at
+  before update on public.purchase_requests
   for each row execute function public.touch_updated_at();
 
 -- ---------------------------------------------------------------------------
@@ -161,6 +204,12 @@ begin
     where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'customers'
   ) then
     alter publication supabase_realtime add table public.customers;
+  end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'purchase_requests'
+  ) then
+    alter publication supabase_realtime add table public.purchase_requests;
   end if;
 end $$;
 
