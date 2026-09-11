@@ -5044,10 +5044,11 @@
                     if (item.kind === 'new-stock') {
                         const newId = generateNextPartId();
                         const name = (item.type || '') + (item.brand ? ' ' + item.brand : '');
-                        setStock(prev => [...prev, { id: newId, type: item.type, brand: item.brand, partNumber: item.partNumber, packageType: item.packageType, size: item.size, description: item.description, location: item.location, initialStock: 0, qrCode: '', photo: '', name, qty: 0 }]);
+                        const initialStock = Number(item.qty) || 0;
+                        setStock(prev => [...prev, { id: newId, type: item.type, brand: item.brand, partNumber: item.partNumber, packageType: item.packageType, size: item.size, description: item.description, location: item.location, initialStock, qrCode: '', photo: '', name, qty: initialStock }]);
                         fetch(GOOGLE_SHEET_API, {
                             method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'createPart', id: newId, type: item.type, brand: item.brand, partNumber: item.partNumber, packageType: item.packageType, size: item.size, description: item.description, location: item.location })
+                            body: JSON.stringify({ action: 'createPart', id: newId, type: item.type, brand: item.brand, partNumber: item.partNumber, packageType: item.packageType, size: item.size, description: item.description, location: item.location, initialStock })
                         }).catch(err => console.error('createPart failed', err));
                         return { ...common, partId: newId, partNo: item.partNumber || '', partName: name || item.partNumber };
                     }
