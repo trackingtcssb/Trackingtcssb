@@ -285,7 +285,7 @@
                 {terms && <p className="text-[9px] text-slate-500 leading-relaxed mb-3">{terms}</p>}
                 <div className="flex justify-between text-[9px] text-slate-400">
                     <span>This document is confidential and issued for the addressee named above only.</span>
-                    <span>Generated {new Date().toLocaleString()}</span>
+                    <span>Generated {formatDateTime(new Date())}</span>
                 </div>
             </div>
         );
@@ -348,6 +348,23 @@
             const day = String(date.getDate()).padStart(2, '0');
             const month = String(date.getMonth() + 1).padStart(2, '0');
             return `${day}/${month}/${date.getFullYear()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+        };
+
+        // Date-only counterpart to formatDateTime, same dd/mm/yyyy shape everywhere in the
+        // app regardless of the viewer's device locale (a plain toLocaleDateString() would
+        // show mm/dd/yyyy on a US-locale phone and dd/mm/yyyy on everyone else's).
+        const formatDate = (value) => {
+            if (!value) return '—';
+            // A plain "yyyy-mm-dd" (every <input type="date"> in this app stores one) has no
+            // timezone of its own - handled as its own case so it isn't reinterpreted as UTC
+            // midnight and shifted a day off in timezones behind UTC.
+            const plainDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+            if (plainDate) return `${plainDate[3]}/${plainDate[2]}/${plainDate[1]}`;
+            const date = new Date(value);
+            if (isNaN(date.getTime())) return value;
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            return `${day}/${month}/${date.getFullYear()}`;
         };
 
         // Status badges render as a small LED-style indicator dot + label, echoing a control-panel readout.
@@ -593,9 +610,14 @@
             if (!item.orderDate) return null;
             const days = parseLeadTimeDays(item.leadTime);
             if (days == null) return null;
-            const d = new Date(item.orderDate);
-            if (isNaN(d)) return null;
-            d.setDate(d.getDate() + days);
+            // item.orderDate is a plain "yyyy-mm-dd" from an <input type="date">, not a real
+            // UTC instant - parsed and re-serialized as calendar-date arithmetic in UTC (noon,
+            // to stay well clear of any DST edge) so it can't drift a day off in either
+            // direction depending on the viewer's own timezone.
+            const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(item.orderDate);
+            if (!parts) return null;
+            const d = new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]), 12));
+            d.setUTCDate(d.getUTCDate() + days);
             return d.toISOString().slice(0, 10);
         };
 
@@ -890,7 +912,7 @@
                                                                     </div>
                                                                 </div>
                                                                 {it.orderDate && estimatedArrivalDate(it) && (
-                                                                    <p className="text-[11px] font-bold text-slate-500"><i className="fa-regular fa-calendar-check mr-1"></i>Est. arrival: {estimatedArrivalDate(it)} (based on the {it.leadTime} lead time above)</p>
+                                                                    <p className="text-[11px] font-bold text-slate-500"><i className="fa-regular fa-calendar-check mr-1"></i>Est. arrival: {formatDate(estimatedArrivalDate(it))} (based on the {it.leadTime} lead time above)</p>
                                                                 )}
                                                                 <input placeholder="Remark (backorder, substitute, price change...)" value={it.remark || ''} onChange={e => updateItem(i, { remark: e.target.value })} className={fieldClass} />
                                                                 {outstanding > 0 && (Number(it.qtyReceived) || 0) > 0 && (
@@ -899,11 +921,11 @@
                                                             </div>
                                                         ) : (
                                                             <div className="text-xs text-slate-600 flex flex-wrap gap-x-4 gap-y-1">
-                                                                <span>Ordered: <b>{it.qtyOrdered || '—'}</b>{it.orderDate ? ` on ${it.orderDate}` : ''}</span>
-                                                                <span>Received: <b>{it.qtyReceived || '—'}</b>{it.receivedDate ? ` on ${it.receivedDate}` : ''}</span>
+                                                                <span>Ordered: <b>{it.qtyOrdered || '—'}</b>{it.orderDate ? ` on ${formatDate(it.orderDate)}` : ''}</span>
+                                                                <span>Received: <b>{it.qtyReceived || '—'}</b>{it.receivedDate ? ` on ${formatDate(it.receivedDate)}` : ''}</span>
                                                                 {it.orderDate && (
                                                                     estimatedArrivalDate(it)
-                                                                        ? <span>Est. arrival: <b>{estimatedArrivalDate(it)}</b></span>
+                                                                        ? <span>Est. arrival: <b>{formatDate(estimatedArrivalDate(it))}</b></span>
                                                                         : (it.leadTime && <span>Lead time: <b>{it.leadTime}</b> from order</span>)
                                                                 )}
                                                                 {it.remark && <span className="w-full text-slate-500 italic">{it.remark}</span>}
@@ -2392,7 +2414,7 @@
                                     </div>
                                     <div className="flex items-center gap-2 flex-wrap mt-3">
                                         {selectedRepair.warrantyType === 'W' && <span className="text-[11px] font-bold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-1 rounded"><i className="fa-solid fa-shield-halved mr-1"></i>Warranty Claim</span>}
-                                        {selectedRepair.promisedDate && <span className="text-[11px] font-bold uppercase bg-slate-50 text-slate-600 border border-slate-200 px-2 py-1 rounded"><i className="fa-regular fa-calendar mr-1"></i>Promised: {selectedRepair.promisedDate}</span>}
+                                        {selectedRepair.promisedDate && <span className="text-[11px] font-bold uppercase bg-slate-50 text-slate-600 border border-slate-200 px-2 py-1 rounded"><i className="fa-regular fa-calendar mr-1"></i>Promised: {formatDate(selectedRepair.promisedDate)}</span>}
                                         <span className="text-[11px] font-bold uppercase bg-slate-50 text-slate-600 border border-slate-200 px-2 py-1 rounded normal-case flex items-center gap-1.5">
                                             <i className="fa-regular fa-id-badge"></i>
                                             {perms.canAssignEngineer && !isLockedByOther ? (
@@ -2556,10 +2578,10 @@
                                                                             {it.kind === 'new-stock' && <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold uppercase">New</span>}
                                                                             {Number(it.qtyReceived) > 0 && <span className="ml-1 text-[9px] bg-emerald-100 text-emerald-700 px-1 py-0.5 rounded font-bold uppercase">{it.qtyReceived} received</span>}
                                                                         </span>
-                                                                        {it.orderDate && <span className="text-[11px] text-slate-500"><i className="fa-regular fa-calendar mr-1"></i>Ordered {it.orderDate}</span>}
+                                                                        {it.orderDate && <span className="text-[11px] text-slate-500"><i className="fa-regular fa-calendar mr-1"></i>Ordered {formatDate(it.orderDate)}</span>}
                                                                         {it.orderDate && (
                                                                             estimatedArrivalDate(it)
-                                                                                ? <span className="text-[11px] text-slate-500"><i className="fa-regular fa-calendar-check mr-1"></i>Est. arrival {estimatedArrivalDate(it)}</span>
+                                                                                ? <span className="text-[11px] text-slate-500"><i className="fa-regular fa-calendar-check mr-1"></i>Est. arrival {formatDate(estimatedArrivalDate(it))}</span>
                                                                                 : (it.leadTime && <span className="text-[11px] text-slate-500"><i className="fa-regular fa-clock mr-1"></i>{it.leadTime} lead time</span>)
                                                                         )}
                                                                         {it.purchaseLink && <a href={it.purchaseLink} target="_blank" rel="noreferrer" className="text-brand-700 font-bold hover:underline"><i className="fa-solid fa-arrow-up-right-from-square"></i></a>}
@@ -2759,7 +2781,7 @@
                                     </button>
                                 </div>
 
-                                <PrintLetterhead docTitle="EQUIPMENT INTAKE / CHAIN-OF-CUSTODY RECEIPT" refLabel="Intake Ref" refValue={selectedRepair.id} dateLabel="Received" dateValue={selectedRepair.dateReceived} />
+                                <PrintLetterhead docTitle="EQUIPMENT INTAKE / CHAIN-OF-CUSTODY RECEIPT" refLabel="Intake Ref" refValue={selectedRepair.id} dateLabel="Received" dateValue={formatDate(selectedRepair.dateReceived)} />
 
                                 <div className="no-print p-3 mb-6 rounded-lg text-xs font-bold border bg-indigo-50 text-indigo-800 border-indigo-200 flex items-center">
                                     <i className="fa-solid fa-circle-info mr-2 text-sm"></i>
@@ -2780,7 +2802,7 @@
                                             <div><span className="text-slate-500">Item:</span> <strong className="text-slate-900">{selectedRepair.itemName}</strong></div>
                                             <div><span className="text-slate-500">Brand / Model:</span> <strong className="text-slate-900">{selectedRepair.brand} {selectedRepair.model}</strong></div>
                                             <div><span className="text-slate-500">Serial No.:</span> <strong className="font-mono text-brand-700">{selectedRepair.serial}</strong></div>
-                                            <div><span className="text-slate-500">Date Received:</span> <strong className="text-slate-900">{selectedRepair.dateReceived}</strong></div>
+                                            <div><span className="text-slate-500">Date Received:</span> <strong className="text-slate-900">{formatDate(selectedRepair.dateReceived)}</strong></div>
                                             <div><span className="text-slate-500">Coverage:</span> <strong className="text-slate-900">{selectedRepair.warrantyType === 'W' ? 'Warranty Claim' : 'Standard Commercial Repair'}</strong></div>
                                         </div>
                                     </div>
@@ -2901,7 +2923,7 @@
                                     This report is issued BEFORE repair work proceeds — share the customer-facing version with the client to discuss and approve the repair quotation.
                                 </div>
 
-                                <PrintLetterhead docTitle="ELECTRONIC DIAGNOSTIC REPORT — FOR QUOTATION REVIEW" refLabel="Diagnostic Report Ref" refValue={selectedRepair.id} dateLabel="Date" dateValue={new Date().toLocaleDateString()} />
+                                <PrintLetterhead docTitle="ELECTRONIC DIAGNOSTIC REPORT — FOR QUOTATION REVIEW" refLabel="Diagnostic Report Ref" refValue={selectedRepair.id} dateLabel="Date" dateValue={formatDate(new Date())} />
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8 border border-slate-300 rounded-lg overflow-hidden bg-slate-50/50">
                                     <div className="p-4 border-r border-slate-300">
@@ -3040,7 +3062,7 @@
                                     {reportMode === 'internal' ? 'INTERNAL MODE: All exact part numbers, technical findings, and logs are visible.' : 'CUSTOMER MODE: Identical report structure. Edit fields below to omit sensitive remarks before exporting.'}
                                 </div>
 
-                                <PrintLetterhead docTitle="TECHNICAL & FAILURE ANALYSIS REPORT" refLabel="Engineering Report Ref" refValue={`${selectedRepair.id}-ER`} dateLabel="Date" dateValue={new Date().toLocaleDateString()} />
+                                <PrintLetterhead docTitle="TECHNICAL & FAILURE ANALYSIS REPORT" refLabel="Engineering Report Ref" refValue={`${selectedRepair.id}-ER`} dateLabel="Date" dateValue={formatDate(new Date())} />
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8 border border-slate-300 rounded-lg overflow-hidden bg-slate-50/50">
                                     <div className="p-4 border-r border-slate-300">
@@ -3469,7 +3491,7 @@
                                 </div>
 
                                 <div className="print-section bg-white p-12 rounded-xl border border-slate-200 shadow-sm max-w-3xl">
-                                    <PrintLetterhead docTitle="DELIVERY / PACKING SLIP" refLabel="Packing Slip Ref" refValue={selectedRepair.id} dateLabel="Date" dateValue={new Date().toLocaleDateString()} />
+                                    <PrintLetterhead docTitle="DELIVERY / PACKING SLIP" refLabel="Packing Slip Ref" refValue={selectedRepair.id} dateLabel="Date" dateValue={formatDate(new Date())} />
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm">
                                         <div className="min-w-0">
                                             <div className="text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Ship To</div>
@@ -3482,7 +3504,7 @@
                                             <div className="text-slate-700 break-words">Job ID: <strong>{selectedRepair.id}</strong></div>
                                             <div className="text-slate-700">Courier: <strong>{deliveryInfo.courier || '—'}</strong></div>
                                             <div className="text-slate-700">Tracking No.: <strong>{deliveryInfo.trackingNumber || '—'}</strong></div>
-                                            <div className="text-slate-700">Shipped Date: <strong>{deliveryInfo.shippedDate || '—'}</strong></div>
+                                            <div className="text-slate-700">Shipped Date: <strong>{formatDate(deliveryInfo.shippedDate)}</strong></div>
                                         </div>
                                         <div className="col-span-2 pt-4 border-t border-slate-200">
                                             <div className="text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Item</div>
@@ -3602,7 +3624,7 @@
                                                             <span className="font-bold text-red-600">{log["Action"] || "Out"} ({log["Quantity"] || log["Qty"] || 1})</span>
                                                             <div className="text-[10px] text-slate-500">Job: {log["Job ID"] || "N/A"} • By: {log["Engineer Name"] || "Haziq"}</div>
                                                         </div>
-                                                        <span className="text-[10px] text-slate-400">{log["Timestamp"] ? new Date(log["Timestamp"]).toLocaleDateString() : ""}</span>
+                                                        <span className="text-[10px] text-slate-400">{log["Timestamp"] ? formatDate(log["Timestamp"]) : ""}</span>
                                                     </div>
                                                 ))}
                                             </div>
@@ -4232,16 +4254,16 @@
         // Reply/Reply All/Forward bodies.
         const quoteForReply = (msg) => {
             const who = msg.direction === 'out' ? msg.to : msg.from;
-            const when = msg.date ? new Date(msg.date).toLocaleString() : '';
+            const when = msg.date ? formatDateTime(msg.date) : '';
             const lines = (msg.bodyText || msg.snippet || '').split('\n').map(l => `> ${l}`).join('\n');
             return `\n\nOn ${when}, ${who} wrote:\n${lines}`;
         };
         const quoteForForward = (msg) => {
-            const when = msg.date ? new Date(msg.date).toLocaleString() : '';
+            const when = msg.date ? formatDateTime(msg.date) : '';
             return `\n\n---------- Forwarded message ----------\nFrom: ${msg.from || msg.to}\nDate: ${when}\nSubject: ${msg.subject}\nTo: ${msg.to}\n\n${msg.bodyText || msg.snippet || ''}`;
         };
 
-        const EmailPage = ({ account, emails, setEmails, currentUserEmail, currentUserId, navigateTo }) => {
+        const EmailPage = ({ account, emails, setEmails, currentUserEmail, currentUserId, navigateTo, syncError }) => {
             const [selectedId, setSelectedId] = useState(null);
             const [composeOpen, setComposeOpen] = useState(false);
             const [showCc, setShowCc] = useState(false);
@@ -4356,8 +4378,11 @@
                         <div>
                             <h2 className="text-xl font-black text-slate-800"><i className="fa-solid fa-envelope mr-2 text-brand-700"></i>{account.email}</h2>
                             <p className="text-xs text-slate-500 mt-0.5">
-                                {account.last_synced_at ? `Last synced ${new Date(account.last_synced_at).toLocaleString()}` : 'Not synced yet — checking for mail…'}
+                                {account.last_synced_at ? `Last synced ${formatDateTime(account.last_synced_at)}` : 'Not synced yet — checking for mail…'}
                             </p>
+                            {syncError && (
+                                <p className="text-xs font-bold text-red-600 mt-1"><i className="fa-solid fa-triangle-exclamation mr-1"></i>Sync error: {syncError}</p>
+                            )}
                         </div>
                         <button onClick={() => startCompose()} className="bg-brand-800 hover:bg-brand-900 text-white px-4 py-2 rounded font-bold text-sm shadow-md"><i className="fa-solid fa-pen mr-1.5"></i>Compose</button>
                     </div>
@@ -4374,7 +4399,7 @@
                                         {!msg.isRead && msg.direction === 'in' && <span className="w-2 h-2 rounded-full bg-brand-600 shrink-0"></span>}
                                     </div>
                                     <p className={`text-xs truncate mt-0.5 ${!msg.isRead && msg.direction === 'in' ? 'font-bold text-slate-800' : 'text-slate-500'}`}>{msg.subject}</p>
-                                    <p className="text-[11px] text-slate-400 mt-1">{msg.date ? new Date(msg.date).toLocaleString() : ''}{msg.attachments?.length ? <i className="fa-solid fa-paperclip ml-1.5"></i> : null}</p>
+                                    <p className="text-[11px] text-slate-400 mt-1">{msg.date ? formatDateTime(msg.date) : ''}{msg.attachments?.length ? <i className="fa-solid fa-paperclip ml-1.5"></i> : null}</p>
                                 </button>
                             ))}
                         </div>
@@ -4388,7 +4413,7 @@
                                             <h3 className="text-lg font-black text-slate-800">{selected.subject}</h3>
                                             <p className="text-xs text-slate-500 mt-1">
                                                 {selected.direction === 'out' ? `To: ${selected.to}` : `From: ${selected.from}`}
-                                                {selected.cc ? ` · Cc: ${selected.cc}` : ''} · {selected.date ? new Date(selected.date).toLocaleString() : ''}
+                                                {selected.cc ? ` · Cc: ${selected.cc}` : ''} · {selected.date ? formatDateTime(selected.date) : ''}
                                             </p>
                                         </div>
                                         <div className="flex gap-1.5 shrink-0">
@@ -4682,6 +4707,7 @@
             // on email_accounts/emails in supabase/schema.sql.
             const [emailAccount, setEmailAccount] = useState(null);
             const [emails, setEmailsState] = useState([]);
+            const [emailSyncError, setEmailSyncError] = useState('');
             const unreadEmailCount = useMemo(() => emails.filter(e => e.direction === 'in' && !e.isRead).length, [emails]);
             const partRequests = useMemo(
                 () => [...purchaseRequests, ...legacyPartRequests.filter(l => !purchaseRequests.some(p => p.id === l.id))],
@@ -4786,11 +4812,20 @@
                 const syncEmail = async () => {
                     try {
                         const { data: { session: liveSession } } = await supabase.auth.getSession();
-                        await fetch(EMAIL_SYNC_ENDPOINT, {
+                        const res = await fetch(EMAIL_SYNC_ENDPOINT, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${liveSession?.access_token || ''}` },
                         });
-                    } catch (e) { console.error('Email sync failed:', e); }
+                        // fetch() only rejects on a network failure, never on the server
+                        // returning an error status — an IMAP auth/timeout/connection failure
+                        // came back as a normal response and was silently doing nothing here.
+                        const body = await res.json().catch(() => ({}));
+                        if (!res.ok) throw new Error(body.error || `Sync failed (${res.status})`);
+                        setEmailSyncError('');
+                    } catch (e) {
+                        console.error('Email sync failed:', e);
+                        setEmailSyncError(e.message || 'Sync failed');
+                    }
                 };
                 syncEmail();
                 const interval = setInterval(syncEmail, EMAIL_SYNC_INTERVAL_MS);
@@ -5314,7 +5349,7 @@
                             {activeTab === 'inventory' && <Inventory stock={stock} loadData={loadData} selectedItemDetail={selectedItemDetail} setSelectedItemDetail={setSelectedItemDetail} transactions={transactions} stockError={stockError} perms={perms} onCreateRequest={handleCreatePartRequest} />}
                             {activeTab === 'part-requests' && (perms.canRequestParts || perms.canManagePurchaseOrders) && <PartRequests partRequests={partRequests} stock={stock} repairs={repairs} perms={perms} currentUserName={currentUserName} onCreateRequest={handleCreatePartRequest} onUpdateStatus={handleUpdatePartRequestStatus} />}
                             {activeTab === 'profile' && <ProfilePage profile={profile} setProfile={setProfile} session={session} emailAccount={emailAccount} setEmailAccount={setEmailAccount} navigateTo={navigateTo} />}
-                            {activeTab === 'email' && emailAccount && <EmailPage account={emailAccount} emails={emails} setEmails={setEmails} currentUserEmail={session?.user?.email || ''} currentUserId={session?.user?.id} navigateTo={navigateTo} />}
+                            {activeTab === 'email' && emailAccount && <EmailPage account={emailAccount} emails={emails} setEmails={setEmails} currentUserEmail={session?.user?.email || ''} currentUserId={session?.user?.id} navigateTo={navigateTo} syncError={emailSyncError} />}
                             {activeTab === 'users' && perms.canManageUsers && <UserManagement users={users} setUsers={setUsers} currentUserName={currentUserName} />}
                             {activeTab === 'activity' && perms.canManageUsers && <ActivityLog repairs={repairs} />}
                         </div>
