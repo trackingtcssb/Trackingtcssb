@@ -739,7 +739,11 @@
             const updateItem = (idx, patch) => setItems(items.map((it, i) => i === idx ? { ...it, ...patch } : it));
             const commit = (extra) => onUpdate(group.requestId || group.id, { platform, trackingNumber, trackingLink, items, ...extra });
 
-            const fieldClass = "w-full border border-slate-300 rounded p-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none";
+            // Explicit bg-white matters here specifically for the two <input type="date">
+            // fields below (Order Date / Received Date): mobile Safari renders an empty
+            // date input with its own grey "well" background unless one is set, which read
+            // as disabled/unusable even though the field was always editable.
+            const fieldClass = "w-full border border-slate-300 rounded p-2 text-sm bg-white focus:ring-2 focus:ring-brand-500 outline-none";
             const labelClass = "block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1";
 
             return (
@@ -1739,6 +1743,12 @@
                 const repairInProgress = WORKFLOW_STEPS.indexOf(selectedRepair.status) >= WORKFLOW_STEPS.indexOf('Proceed Repair');
                 const canEditDiagnosticNow = userRole === 'superadmin' || (repairInProgress ? perms.canEditAdminPanel : perms.canEditDiagnostic);
 
+                // The Repair & Engineering Report (write-up of the actual repair work) is a
+                // separate document from the pre-repair quotation above, with its own
+                // permission flag (canEditReport) -- it does NOT lock once repair starts, since
+                // 'Repairing' is exactly when engineering is supposed to be filling it in.
+                const canEditRepairReportNow = perms.canEditReport;
+
                 useEffect(() => {
                     trackViewing(selectedRepair.id, Date.now());
                     return () => { untrackViewing(); };
@@ -1791,7 +1801,15 @@
                 const updateStatus = async (newStatus) => {
                     if (guardLock()) return;
                     if (!perms.allowedStatuses.includes(newStatus)) return alert(`Role restriction prohibits moving to ${newStatus}.`);
-                    if (!(await askConfirm(`Are you sure you want to change status to: ${newStatus}?`))) return;
+
+                    // Advancing out of Waiting PO is normally gated on having a PO on file, but
+                    // admin can still choose to proceed without one (e.g. a verbal/emailed
+                    // approval) -- this just makes sure that's a deliberate choice, not a
+                    // missed step, instead of silently letting the job move on with nothing
+                    // attached.
+                    if (newStatus === 'Proceed Repair' && selectedRepair.status === 'Waiting PO' && !(selectedRepair.poDocuments || []).length) {
+                        if (!(await askConfirm('No PO document has been uploaded for this job yet. Proceed to repair anyway without a PO on file?'))) return;
+                    } else if (!(await askConfirm(`Are you sure you want to change status to: ${newStatus}?`))) return;
 
                     const updated = appendAuditEntry({ ...selectedRepair, status: newStatus, pendingElectronicPickup: false, pendingMechanicalPickup: false, readyForPO: false }, { type: 'status', status: newStatus, by: userRole, byName: currentUserName, detail: `Status changed to ${newStatus}` });
                     setRepairs(repairs.map(r => r.id === updated.id ? updated : r)); setSelectedRepair(updated);
@@ -2116,8 +2134,16 @@
                         if (selectedRepair.awaitingPart) {
                             return (
                                 <div className="flex gap-3 items-center flex-wrap">
-                                    <span className="text-xs font-bold text-amber-700 italic flex items-center bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5">
-                                        <i className="fa-solid fa-hourglass-half mr-2"></i> Waiting Part — repair paused ({(selectedRepair.awaitingPartRequestIds || []).join(', ')})
+                                    <span className="text-xs font-bold text-amber-700 italic flex items-center bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 flex-wrap gap-x-2">
+                                        <span className="flex items-center"><i className="fa-solid fa-hourglass-half mr-2"></i>Waiting Part — repair paused:</span>
+                                        {(selectedRepair.awaitingPartRequestIds || []).map(reqId => {
+                                            const req = (partRequests || []).find(p => p.id === reqId || p.requestId === reqId);
+                                            return (
+                                                <span key={reqId} className="not-italic font-mono">
+                                                    {reqId}{req ? <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${PURCHASE_STATUS_STYLE[req.status] || PURCHASE_STATUS_STYLE.Requested}`}>{req.status}</span> : null}
+                                                </span>
+                                            );
+                                        })}
                                     </span>
                                     {perms.canRequestParts && (
                                         <button disabled={dis} onClick={() => setShowPartRequestModal(true)} className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-lg text-xs font-bold transition shadow-sm flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
@@ -2924,17 +2950,17 @@
                                     <div className="space-y-6 text-sm">
                                         <div>
                                             <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest bg-slate-100 p-2 border-l-4 border-brand-800 mb-2">1. VISUAL INSPECTION & COMPONENT FAILURE ANALYSIS</h4>
-                                            <textarea rows="3" value={diag.visualInspection} onChange={e => setDiag({...diag, visualInspection: e.target.value})} readOnly={!canEditDiagnosticNow || isLockedByOther} className={`w-full border rounded p-3 text-sm font-medium ${canEditDiagnosticNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
+                                            <textarea rows="3" value={diag.visualInspection} onChange={e => setDiag({...diag, visualInspection: e.target.value})} readOnly={!canEditRepairReportNow || isLockedByOther} className={`w-full border rounded p-3 text-sm font-medium ${canEditRepairReportNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
                                         </div>
 
                                         <div>
                                             <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest bg-slate-100 p-2 border-l-4 border-brand-800 mb-2">2. ELECTRICAL & LOGIC SUB-SYSTEM DIAGNOSTIC FINDINGS</h4>
-                                            <textarea rows="3" value={diag.initialFindings} onChange={e => setDiag({...diag, initialFindings: e.target.value})} readOnly={!canEditDiagnosticNow || isLockedByOther} className={`w-full border rounded p-3 text-sm font-medium ${canEditDiagnosticNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
+                                            <textarea rows="3" value={diag.initialFindings} onChange={e => setDiag({...diag, initialFindings: e.target.value})} readOnly={!canEditRepairReportNow || isLockedByOther} className={`w-full border rounded p-3 text-sm font-medium ${canEditRepairReportNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
                                         </div>
 
                                         <div>
                                             <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest bg-slate-100 p-2 border-l-4 border-brand-800 mb-2">3. CORRECTIVE ENGINEERING ACTIONS TAKEN</h4>
-                                            <textarea rows="3" value={diag.correctiveAction || ''} onChange={e => setDiag({...diag, correctiveAction: e.target.value})} readOnly={!canEditDiagnosticNow || isLockedByOther} placeholder="Detail component replacements..." className={`w-full border rounded p-3 text-sm font-medium ${canEditDiagnosticNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
+                                            <textarea rows="3" value={diag.correctiveAction || ''} onChange={e => setDiag({...diag, correctiveAction: e.target.value})} readOnly={!canEditRepairReportNow || isLockedByOther} placeholder="Detail component replacements..." className={`w-full border rounded p-3 text-sm font-medium ${canEditRepairReportNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
                                         </div>
 
                                         <div className="pt-2">
@@ -2970,7 +2996,7 @@
                                         <div className="pt-2">
                                             <div className="flex justify-between items-center bg-slate-100 p-2 border-l-4 border-brand-800 mb-3">
                                                 <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest m-0">5. INSPECTION & REPAIR PHOTO DOCUMENTATION</h4>
-                                                {canEditDiagnosticNow && !isLockedByOther && (
+                                                {canEditRepairReportNow && !isLockedByOther && (
                                                     <label className="bg-brand-800 hover:bg-brand-900 text-white px-3 py-1 rounded text-[11px] font-bold transition cursor-pointer shadow-sm no-print flex items-center">
                                                         <i className="fa-solid fa-upload mr-1.5"></i> Upload from Device
                                                         <input type="file" accept="image/*" multiple onChange={(e) => {
@@ -3001,10 +3027,10 @@
                                                             </div>
                                                             <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-start gap-3">
                                                                 <div className="flex-1">
-                                                                    <input type="text" placeholder="Photo caption / description..." value={photo.caption} onChange={e => { const p = [...diag.photos]; p[idx].caption = e.target.value; setDiag({...diag, photos: p}); }} readOnly={!canEditDiagnosticNow || isLockedByOther} className="w-full border border-slate-300 rounded p-2 text-sm bg-white font-medium text-slate-800 focus:ring-2 focus:ring-brand-500 outline-none print:hidden shadow-sm" />
+                                                                    <input type="text" placeholder="Photo caption / description..." value={photo.caption} onChange={e => { const p = [...diag.photos]; p[idx].caption = e.target.value; setDiag({...diag, photos: p}); }} readOnly={!canEditRepairReportNow || isLockedByOther} className="w-full border border-slate-300 rounded p-2 text-sm bg-white font-medium text-slate-800 focus:ring-2 focus:ring-brand-500 outline-none print:hidden shadow-sm" />
                                                                     <div className="hidden print:block text-sm font-semibold text-slate-900 px-1 py-0.5">{photo.caption || 'Reference Image'}</div>
                                                                 </div>
-                                                                {canEditDiagnosticNow && !isLockedByOther && (
+                                                                {canEditRepairReportNow && !isLockedByOther && (
                                                                     <button type="button" onClick={() => { const p = diag.photos.filter((_, i) => i !== idx); setDiag({...diag, photos: p}); }} className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded transition no-print"><i className="fa-solid fa-trash-can"></i></button>
                                                                 )}
                                                             </div>
@@ -3017,7 +3043,7 @@
                                         <div className="pt-2 no-print">
                                             <div className="flex justify-between items-center bg-slate-100 p-2 border-l-4 border-brand-800 mb-3">
                                                 <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest m-0">TEST VIDEOS (INTERNAL RECORD ONLY)</h4>
-                                                {canEditDiagnosticNow && !isLockedByOther && (
+                                                {canEditRepairReportNow && !isLockedByOther && (
                                                     <label className="bg-brand-800 hover:bg-brand-900 text-white px-3 py-1 rounded text-[11px] font-bold transition cursor-pointer shadow-sm flex items-center">
                                                         <i className="fa-solid fa-upload mr-1.5"></i> Upload Video
                                                         <input type="file" accept="video/*" multiple onChange={(e) => {
@@ -3049,10 +3075,10 @@
                                                             <video controls className="w-full h-64 md:h-72 bg-black" src={video.url}></video>
                                                             <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-start gap-3">
                                                                 <div className="flex-1 min-w-0">
-                                                                    <input type="text" placeholder="Caption / description..." value={video.caption} onChange={e => { const v = [...diag.videos]; v[idx] = { ...v[idx], caption: e.target.value }; setDiag({...diag, videos: v}); }} readOnly={!canEditDiagnosticNow || isLockedByOther} className="w-full border border-slate-300 rounded p-2 text-sm bg-white font-medium text-slate-800 focus:ring-2 focus:ring-brand-500 outline-none shadow-sm" />
+                                                                    <input type="text" placeholder="Caption / description..." value={video.caption} onChange={e => { const v = [...diag.videos]; v[idx] = { ...v[idx], caption: e.target.value }; setDiag({...diag, videos: v}); }} readOnly={!canEditRepairReportNow || isLockedByOther} className="w-full border border-slate-300 rounded p-2 text-sm bg-white font-medium text-slate-800 focus:ring-2 focus:ring-brand-500 outline-none shadow-sm" />
                                                                     <span className="text-[10px] text-slate-500">{video.size}</span>
                                                                 </div>
-                                                                {canEditDiagnosticNow && !isLockedByOther && (
+                                                                {canEditRepairReportNow && !isLockedByOther && (
                                                                     <button type="button" onClick={() => { const v = diag.videos.filter((_, i) => i !== idx); setDiag({...diag, videos: v}); }} className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded transition"><i className="fa-solid fa-trash-can"></i></button>
                                                                 )}
                                                             </div>
@@ -3064,7 +3090,7 @@
 
                                         <div>
                                             <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest bg-slate-100 p-2 border-l-4 border-brand-800 mb-2">6. BENCH STRESS TESTING & QUALITY CALIBRATION RESULTS</h4>
-                                            <textarea rows="3" value={diag.testResults || ''} onChange={e => setDiag({...diag, testResults: e.target.value})} readOnly={!canEditDiagnosticNow || isLockedByOther} placeholder="Detail thermal test outcomes..." className={`w-full border rounded p-3 text-sm font-medium ${canEditDiagnosticNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
+                                            <textarea rows="3" value={diag.testResults || ''} onChange={e => setDiag({...diag, testResults: e.target.value})} readOnly={!canEditRepairReportNow || isLockedByOther} placeholder="Detail thermal test outcomes..." className={`w-full border rounded p-3 text-sm font-medium ${canEditRepairReportNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
                                         </div>
                                     </div>
                                 ) : (
@@ -3215,7 +3241,7 @@
 
                                 <PrintFooter terms="This repair is warranted for 90 days from the date of delivery against defects in workmanship, covering only the components listed in Section 4 (Bill of Materials) above. This warranty excludes damage caused by improper installation, power surges, water ingress, or unauthorized modification after handover." />
 
-                                {canEditDiagnosticNow && (
+                                {canEditRepairReportNow && (
                                     <div className="no-print pt-6 border-t border-slate-200">
                                         <button disabled={isLockedByOther} onClick={handleSaveDiag} className="bg-brand-800 hover:bg-brand-900 text-white px-8 py-3 rounded shadow-md text-sm font-bold transition flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
                                             <i className="fa-solid fa-floppy-disk mr-2"></i> Save Engineering Reports
@@ -3233,8 +3259,15 @@
                                     <button disabled={isLockedByOther} onClick={() => { if (guardLock()) return; let u = {...selectedRepair, ...editData}; u = appendAuditEntry(u, { type: 'edit', status: 'Execution Notes Updated', by: userRole, byName: currentUserName, detail: 'Final execution summary notes saved' }); setRepairs(repairs.map(r => r.id===u.id ? u:r)); setSelectedRepair(u); showToast('Execution notes saved.'); }} className="mt-6 bg-brand-800 text-white px-6 py-3 rounded text-sm font-bold shadow-md hover:bg-brand-900 transition w-full disabled:opacity-40 disabled:cursor-not-allowed">Save Execution Summary</button>
                                 </div>
                                 <div className="bg-slate-50 p-8 rounded-xl shadow-sm border border-slate-200">
-                                    <h3 className="text-xs font-black text-brand-800 uppercase tracking-widest mb-2 border-b border-slate-200 pb-2"><i className="fa-solid fa-boxes-stacked mr-2"></i> Allocate Parts & Deduct Stock</h3>
-                                    <p className="text-xs font-medium text-slate-500 mb-6">Select components to attach to this job's Bill of Materials and deduct from inventory. Component location is shown to help you find the part quickly.</p>
+                                    <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-2 mb-2">
+                                        <h3 className="text-xs font-black text-brand-800 uppercase tracking-widest"><i className="fa-solid fa-boxes-stacked mr-2"></i> Allocate Parts & Deduct Stock</h3>
+                                        {perms.canRequestParts && (
+                                            <button disabled={isLockedByOther} onClick={() => setShowPartRequestModal(true)} className="text-xs font-bold text-amber-700 hover:underline whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed">
+                                                <i className="fa-solid fa-cart-shopping mr-1"></i> Request / Restock Part
+                                            </button>
+                                        )}
+                                    </div>
+                                    <p className="text-xs font-medium text-slate-500 mb-6">Select components to attach to this job's Bill of Materials and deduct from inventory. Component location is shown to help you find the part quickly. Out of stock or need more? Use "Request / Restock Part" above — it's tagged to this job automatically.</p>
                                     <div className="space-y-4 mb-6">
                                         {pendingParts.map((item, index) => (
                                             <div key={index} className="flex gap-3 items-center bg-white p-2 border border-slate-200 rounded shadow-sm">
