@@ -542,6 +542,28 @@
         const requestTotal = (request) => (request.items || []).reduce((sum, it) => sum + lineTotal(it), 0);
         const formatMoney = (value) => (Number(value) || 0).toFixed(2);
 
+        // Lead time is free text (placeholder "e.g. 1 week") since suppliers quote it every
+        // which way - only bother computing an actual estimated-arrival date for the simple,
+        // common "<number> day(s)/week(s)/month(s)" shape. Anything else (a range, "TBD", a
+        // supplier name) just isn't a date we can fabricate, so callers fall back to showing
+        // the raw lead time text instead.
+        const parseLeadTimeDays = (text) => {
+            const m = String(text || '').trim().match(/^(\d+(?:\.\d+)?)\s*(day|week|month)s?$/i);
+            if (!m) return null;
+            const n = parseFloat(m[1]);
+            const unit = m[2].toLowerCase();
+            return Math.round(unit === 'day' ? n : unit === 'week' ? n * 7 : n * 30);
+        };
+        const estimatedArrivalDate = (item) => {
+            if (!item.orderDate) return null;
+            const days = parseLeadTimeDays(item.leadTime);
+            if (days == null) return null;
+            const d = new Date(item.orderDate);
+            if (isNaN(d)) return null;
+            d.setDate(d.getDate() + days);
+            return d.toISOString().slice(0, 10);
+        };
+
         // Purchase requests raised before this moved to Supabase live in the old Google Sheet as
         // one flat row per line item. They're folded back into the same shape as current requests
         // so the history stays visible, but they're read-only — the Sheet has no columns for the
@@ -826,6 +848,9 @@
                                                                         <input type="date" value={it.receivedDate || ''} onChange={e => updateItem(i, { receivedDate: e.target.value })} className={fieldClass} />
                                                                     </div>
                                                                 </div>
+                                                                {it.orderDate && estimatedArrivalDate(it) && (
+                                                                    <p className="text-[11px] font-bold text-slate-500"><i className="fa-regular fa-calendar-check mr-1"></i>Est. arrival: {estimatedArrivalDate(it)} (based on the {it.leadTime} lead time above)</p>
+                                                                )}
                                                                 <input placeholder="Remark (backorder, substitute, price change...)" value={it.remark || ''} onChange={e => updateItem(i, { remark: e.target.value })} className={fieldClass} />
                                                                 {outstanding > 0 && (Number(it.qtyReceived) || 0) > 0 && (
                                                                     <p className="text-[11px] font-bold text-amber-700"><i className="fa-solid fa-triangle-exclamation mr-1"></i>{outstanding} still outstanding</p>
@@ -835,6 +860,11 @@
                                                             <div className="text-xs text-slate-600 flex flex-wrap gap-x-4 gap-y-1">
                                                                 <span>Ordered: <b>{it.qtyOrdered || '—'}</b>{it.orderDate ? ` on ${it.orderDate}` : ''}</span>
                                                                 <span>Received: <b>{it.qtyReceived || '—'}</b>{it.receivedDate ? ` on ${it.receivedDate}` : ''}</span>
+                                                                {it.orderDate && (
+                                                                    estimatedArrivalDate(it)
+                                                                        ? <span>Est. arrival: <b>{estimatedArrivalDate(it)}</b></span>
+                                                                        : (it.leadTime && <span>Lead time: <b>{it.leadTime}</b> from order</span>)
+                                                                )}
                                                                 {it.remark && <span className="w-full text-slate-500 italic">{it.remark}</span>}
                                                             </div>
                                                         )}
