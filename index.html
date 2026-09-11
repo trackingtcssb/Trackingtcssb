@@ -178,15 +178,15 @@
         const NEXT_WORKFLOW_STEP = { 'Draft': 'Diagnostic', 'Waiting PO': 'Proceed Repair', 'Proceed Repair': 'Repairing', 'Repair Completed': 'QC', 'Repair Failed': 'QC', 'QC': 'Delivery Arrangement', 'Delivery Arrangement': 'Delivered', 'Delivered': null };
 
         const ROLE_PERMISSIONS = {
-            superadmin: { canReceiveItem: true, canEditAdminPanel: true, canViewReport: true, canEditReport: true, canViewDiagnostic: true, canEditDiagnostic: true, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: true, canSeeFullCustomerInfo: true, isDeliveryRole: false, canQC: true, canManageUsers: true, canTransferDepartment: true, canDeleteRecords: true, allowedStatuses: WORKFLOW_STEPS },
-            admin: { canReceiveItem: true, canEditAdminPanel: true, canViewReport: true, canEditReport: false, canViewDiagnostic: true, canEditDiagnostic: false, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: true, canSeeFullCustomerInfo: true, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: true, canDeleteRecords: true, allowedStatuses: WORKFLOW_STEPS },
+            superadmin: { canReceiveItem: true, canEditAdminPanel: true, canViewReport: true, canEditReport: true, canViewDiagnostic: true, canEditDiagnostic: true, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: true, canSeeFullCustomerInfo: true, isDeliveryRole: false, canQC: true, canManageUsers: true, canTransferDepartment: true, canAssignEngineer: true, canDeleteRecords: true, allowedStatuses: WORKFLOW_STEPS },
+            admin: { canReceiveItem: true, canEditAdminPanel: true, canViewReport: true, canEditReport: false, canViewDiagnostic: true, canEditDiagnostic: false, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: true, canSeeFullCustomerInfo: true, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: true, canAssignEngineer: true, canDeleteRecords: true, allowedStatuses: WORKFLOW_STEPS },
             engineer: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: true, canViewDiagnostic: true, canEditDiagnostic: true, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: true, canDeleteRecords: false, allowedStatuses: ['Diagnostic', 'Proceed Repair', 'Repairing', 'Repair Completed', 'Repair Failed', 'QC'] },
             mechanical: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: true, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: true, canDeleteRecords: false, allowedStatuses: ['Diagnostic', 'Proceed Repair', 'Repairing', 'Repair Completed', 'Repair Failed', 'QC'] },
             qc: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: false, canViewDiagnostic: true, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: true, canManageUsers: false, canTransferDepartment: false, canDeleteRecords: false, allowedStatuses: ['QC', 'Repairing', 'Delivery Arrangement'] },
             // Supervises the electronic bench end to end: everything engineer, mechanical and
             // qc can each do, combined (the QC segregation-of-duties notice still fires if the
             // same person repaired and then signs off, it just doesn't block them).
-            electronic_supervisor: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: true, canViewDiagnostic: true, canEditDiagnostic: true, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: true, canManageUsers: false, canTransferDepartment: true, canDeleteRecords: false, allowedStatuses: ['Diagnostic', 'Proceed Repair', 'Repairing', 'Repair Completed', 'Repair Failed', 'QC', 'Delivery Arrangement'] },
+            electronic_supervisor: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: true, canViewDiagnostic: true, canEditDiagnostic: true, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: true, canManageUsers: false, canTransferDepartment: true, canAssignEngineer: true, canDeleteRecords: false, allowedStatuses: ['Diagnostic', 'Proceed Repair', 'Repairing', 'Repair Completed', 'Repair Failed', 'QC', 'Delivery Arrangement'] },
             packaging: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: false, canEditReport: false, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: false, canSeeFullCustomerInfo: true, isDeliveryRole: true, canQC: false, canManageUsers: false, canTransferDepartment: false, canDeleteRecords: false, allowedStatuses: ['Delivery Arrangement', 'Delivered'] },
             logistic: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: false, canEditReport: false, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: false, canSeeFullCustomerInfo: true, isDeliveryRole: true, canQC: false, canManageUsers: false, canTransferDepartment: false, canDeleteRecords: false, allowedStatuses: ['Delivery Arrangement', 'Delivered'] },
             purchaser: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: false, canEditReport: false, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: true, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: false, canDeleteRecords: false, allowedStatuses: [] }
@@ -1763,7 +1763,7 @@
         // when the photo preview overlay opens/closes). Nesting it inside App used to
         // cause the whole sub-tab state (active tab, edit buffers, etc.) to reset on
         // every unrelated App state change.
-        const ItemDetail = ({ repair, repairs, setRepairs, setSelectedRepair, perms, userRole, currentUserName, currentUserProfile, stock, setStock, navigateTo, setPreviewImage, loadData, onLogAudit, onCreateRequest, partRequests, viewersByJob, currentTabId, trackViewing, untrackViewing, onRequestEdit, onDeleteRepair }) => {
+        const ItemDetail = ({ repair, repairs, setRepairs, setSelectedRepair, perms, userRole, currentUserName, currentUserProfile, users, stock, setStock, navigateTo, setPreviewImage, loadData, onLogAudit, onCreateRequest, partRequests, viewersByJob, currentTabId, trackViewing, untrackViewing, onRequestEdit, onDeleteRepair }) => {
                 const selectedRepair = repair;
                 const [activeSubTab, setActiveSubTab] = useState('workflow');
                 const [showPartRequestModal, setShowPartRequestModal] = useState(false);
@@ -2018,6 +2018,28 @@
                     setRepairs(repairs.map(r => r.id === updated.id ? updated : r)); setSelectedRepair(updated);
                 };
 
+                // Anyone who works the bench is assignable, whatever their own role — a
+                // supervisor can hand a job to an engineer, a mechanical tech, or another
+                // supervisor. Inactive accounts are left out so they can't be handed work.
+                const assignableUsers = (users || []).filter(u =>
+                    ['engineer', 'mechanical', 'electronic_supervisor'].includes(u.role) && u.status !== 'Inactive'
+                );
+
+                const handleReassign = (name) => {
+                    if (guardLock()) return;
+                    const previous = selectedRepair.assignedEngineer || 'Unassigned';
+                    if (name === (selectedRepair.assignedEngineer || '')) return;
+                    let updated = { ...selectedRepair, assignedEngineer: name };
+                    updated = appendAuditEntry(updated, {
+                        type: 'edit',
+                        status: name ? 'Job Reassigned' : 'Job Unassigned',
+                        by: userRole, byName: currentUserName,
+                        detail: name ? `Reassigned from ${previous} to ${name} by ${currentUserName}` : `${previous} unassigned from this job by ${currentUserName}`,
+                    });
+                    setRepairs(repairs.map(r => r.id === updated.id ? updated : r)); setSelectedRepair(updated);
+                    showToast(name ? `Job reassigned to ${name}.` : 'Job set back to unassigned.');
+                };
+
                 const handleTransferDepartment = async (targetDept) => {
                     if (guardLock()) return;
                     // A round trip (Mechanical -> Electronic -> back to Mechanical) means Mechanical
@@ -2236,11 +2258,8 @@
                                 <button disabled={dis} onClick={() => updateStatus('Repair Failed')} className="bg-red-700 hover:bg-red-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
                                     <i className="fa-solid fa-ban mr-2"></i> Declare Repair Failed (BER)
                                 </button>
-                                {perms.canRequestParts && (
-                                    <button disabled={dis} onClick={() => setShowPartRequestModal(true)} className="bg-white border border-slate-300 text-slate-700 hover:border-brand-500 hover:text-brand-700 px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-sm flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
-                                        <i className="fa-solid fa-cart-shopping mr-2"></i> Request Purchase
-                                    </button>
-                                )}
+                                {/* Requesting a purchase lives on the Parts & Execution tab, next to
+                                    the stock it's about — this panel is for moving the job's status. */}
                                 <button disabled={dis} onClick={() => updateStatus('Repair Completed')} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
                                     Repair Completed (Successful) <i className="fa-solid fa-check ml-2"></i>
                                 </button>
@@ -2376,9 +2395,28 @@
                                         {selectedRepair.promisedDate && <span className="text-[11px] font-bold uppercase bg-slate-50 text-slate-600 border border-slate-200 px-2 py-1 rounded"><i className="fa-regular fa-calendar mr-1"></i>Promised: {selectedRepair.promisedDate}</span>}
                                         <span className="text-[11px] font-bold uppercase bg-slate-50 text-slate-600 border border-slate-200 px-2 py-1 rounded normal-case flex items-center gap-1.5">
                                             <i className="fa-regular fa-id-badge"></i>
-                                            {selectedRepair.assignedEngineer ? `Assigned: ${selectedRepair.assignedEngineer}` : 'Unassigned'}
-                                            {!selectedRepair.assignedEngineer && ['engineer', 'mechanical', 'electronic_supervisor'].includes(userRole) && !isLockedByOther && (
-                                                <button onClick={handleAssignToMe} className="text-brand-700 underline font-bold">Assign to me</button>
+                                            {perms.canAssignEngineer && !isLockedByOther ? (
+                                                <React.Fragment>
+                                                    Assigned:
+                                                    <select
+                                                        value={selectedRepair.assignedEngineer || ''}
+                                                        onChange={e => handleReassign(e.target.value)}
+                                                        className="bg-white border border-slate-300 rounded px-1.5 py-0.5 text-[11px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer"
+                                                    >
+                                                        <option value="">Unassigned</option>
+                                                        {assignableUsers.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+                                                        {selectedRepair.assignedEngineer && !assignableUsers.some(u => u.name === selectedRepair.assignedEngineer) && (
+                                                            <option value={selectedRepair.assignedEngineer}>{selectedRepair.assignedEngineer}</option>
+                                                        )}
+                                                    </select>
+                                                </React.Fragment>
+                                            ) : (
+                                                <React.Fragment>
+                                                    {selectedRepair.assignedEngineer ? `Assigned: ${selectedRepair.assignedEngineer}` : 'Unassigned'}
+                                                    {!selectedRepair.assignedEngineer && ['engineer', 'mechanical', 'electronic_supervisor'].includes(userRole) && !isLockedByOther && (
+                                                        <button onClick={handleAssignToMe} className="text-brand-700 underline font-bold">Assign to me</button>
+                                                    )}
+                                                </React.Fragment>
                                             )}
                                         </span>
                                         {perms.canTransferDepartment && !isLockedByOther && (
@@ -5249,6 +5287,7 @@
                                     userRole={userRole}
                                     currentUserName={currentUserName}
                                     currentUserProfile={profile}
+                                    users={users}
                                     stock={stock}
                                     setStock={setStock}
                                     navigateTo={navigateTo}
