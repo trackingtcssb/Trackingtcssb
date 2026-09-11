@@ -848,6 +848,12 @@
                                                                         <input type="date" value={it.receivedDate || ''} onChange={e => updateItem(i, { receivedDate: e.target.value })} className={fieldClass} />
                                                                     </div>
                                                                 </div>
+                                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                                                    <div>
+                                                                        <label className={labelClass}>Lead Time</label>
+                                                                        <input placeholder="e.g. 1 week" value={it.leadTime || ''} onChange={e => updateItem(i, { leadTime: e.target.value })} className={fieldClass} />
+                                                                    </div>
+                                                                </div>
                                                                 {it.orderDate && estimatedArrivalDate(it) && (
                                                                     <p className="text-[11px] font-bold text-slate-500"><i className="fa-regular fa-calendar-check mr-1"></i>Est. arrival: {estimatedArrivalDate(it)} (based on the {it.leadTime} lead time above)</p>
                                                                 )}
