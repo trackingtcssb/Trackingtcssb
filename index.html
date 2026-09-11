@@ -2549,13 +2549,19 @@
                                                             </div>
                                                             <div className="mt-2 text-xs text-slate-700 space-y-1.5">
                                                                 {(g.items || []).map((it, i) => (
-                                                                    <div key={i} className="flex items-center gap-2">
+                                                                    <div key={i} className="flex items-center gap-2 flex-wrap">
                                                                         {it.photoUrl && <img src={it.photoUrl} alt={it.partName} className="w-7 h-7 object-cover rounded border border-slate-200 shrink-0" />}
                                                                         <span>{it.partName || it.itemName || it.partNo} <span className="text-slate-400">x{it.qty}</span>
                                                                             {it.kind === 'one-off' && <span className="ml-1 text-[9px] bg-cyan-100 text-cyan-800 px-1 py-0.5 rounded font-bold uppercase">One-off</span>}
                                                                             {it.kind === 'new-stock' && <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold uppercase">New</span>}
                                                                             {Number(it.qtyReceived) > 0 && <span className="ml-1 text-[9px] bg-emerald-100 text-emerald-700 px-1 py-0.5 rounded font-bold uppercase">{it.qtyReceived} received</span>}
                                                                         </span>
+                                                                        {it.orderDate && <span className="text-[11px] text-slate-500"><i className="fa-regular fa-calendar mr-1"></i>Ordered {it.orderDate}</span>}
+                                                                        {it.orderDate && (
+                                                                            estimatedArrivalDate(it)
+                                                                                ? <span className="text-[11px] text-slate-500"><i className="fa-regular fa-calendar-check mr-1"></i>Est. arrival {estimatedArrivalDate(it)}</span>
+                                                                                : (it.leadTime && <span className="text-[11px] text-slate-500"><i className="fa-regular fa-clock mr-1"></i>{it.leadTime} lead time</span>)
+                                                                        )}
                                                                         {it.purchaseLink && <a href={it.purchaseLink} target="_blank" rel="noreferrer" className="text-brand-700 font-bold hover:underline"><i className="fa-solid fa-arrow-up-right-from-square"></i></a>}
                                                                     </div>
                                                                 ))}
