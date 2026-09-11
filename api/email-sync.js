@@ -15,8 +15,16 @@ import { decryptSecret } from './_lib/crypto.js';
 // history), and every sync caps how many messages it parses in one call so a very
 // stale account can't run past the function's time limit - it just catches up over
 // a few syncs instead, advancing last_uid a bit further each time.
-const FIRST_SYNC_BACKFILL = 25;
-const MAX_MESSAGES_PER_SYNC = 60;
+const FIRST_SYNC_BACKFILL = 15;
+const MAX_MESSAGES_PER_SYNC = 20;
+// Wall-clock budget for the fetch loop, comfortably inside this function's maxDuration
+// (see vercel.json). Downloading a message's full source, parsing it and pushing its
+// attachments into Storage is slow enough that a busy mailbox could otherwise run past
+// the platform limit and get killed mid-request - the browser sees no response at all
+// ("Load failed"), and because nothing is ever saved the same messages are retried and
+// time out again on every poll. Stopping early instead saves what was fetched and lets
+// the next poll pick up from there.
+const SYNC_TIME_BUDGET_MS = 35000;
 // Attachments bigger than this are left out of a synced message entirely (noted via
 // `skippedAttachments`) rather than blowing up Storage usage or the function's time
 // budget on one oversized file.
@@ -43,10 +51,24 @@ export default async function handler(req, res) {
             secure: true,
             auth: { user: account.email, pass: decryptSecret(account.encrypted_password) },
             logger: false,
+            // Without these an unreachable or silent mail server is waited on indefinitely
+            // until the platform kills the whole request, which reaches the browser as a
+            // bare network failure with nothing to act on. These turn that into a normal
+            // error response naming what went wrong.
+            connectionTimeout: 15000,
+            greetingTimeout: 10000,
+            socketTimeout: 30000,
         });
+
+        // ImapFlow is an EventEmitter: an async connection error with no 'error' listener
+        // is thrown as an uncaught exception, taking the process down before the handler's
+        // own try/catch can turn it into a response.
+        client.on('error', err => console.error('IMAP client error:', err));
 
         let maxUidSeen = account.last_uid || 0;
         let newCount = 0;
+        let reachedLimit = false;
+        const deadline = Date.now() + SYNC_TIME_BUDGET_MS;
 
         await client.connect();
         try {
@@ -58,16 +80,21 @@ export default async function handler(req, res) {
                     : Math.max(1, mailbox.uidNext - FIRST_SYNC_BACKFILL);
 
                 const rows = [];
-                let processed = 0;
                 for await (const message of client.fetch(
                     `${lowUid}:*`,
                     { uid: true, envelope: true, source: true, flags: true },
                     { uid: true }
                 )) {
                     if (account.last_uid && message.uid <= account.last_uid) continue;
-                    if (message.uid > maxUidSeen) maxUidSeen = message.uid;
-                    if (processed >= MAX_MESSAGES_PER_SYNC) continue;
-                    processed++;
+
+                    // Stop rather than skip: last_uid is only advanced for messages actually
+                    // stored below, so anything left here is picked up by the next sync.
+                    // (Skipping while still advancing last_uid silently dropped every message
+                    // past the cap — they were never stored and never looked at again.)
+                    if (rows.length >= MAX_MESSAGES_PER_SYNC || Date.now() > deadline) {
+                        reachedLimit = true;
+                        break;
+                    }
 
                     const parsed = await simpleParser(message.source);
                     const messageId = message.envelope?.messageId || parsed.messageId || `uid-${message.uid}@${account.imap_host}`;
@@ -108,6 +135,8 @@ export default async function handler(req, res) {
                             attachments, skippedAttachments,
                         },
                     });
+
+                    if (message.uid > maxUidSeen) maxUidSeen = message.uid;
                 }
 
                 if (rows.length) {
@@ -118,14 +147,21 @@ export default async function handler(req, res) {
                 }
             }
         } finally {
-            await client.logout().catch(() => {});
+            // A clean logout can stall when the fetch stream was abandoned part-way through
+            // (the break above), so it gets a short window before the socket is just closed -
+            // otherwise the tidy-up itself could hold the request open past the time limit.
+            await Promise.race([
+                client.logout().catch(() => {}),
+                new Promise(resolve => setTimeout(resolve, 3000)),
+            ]);
+            client.close();
         }
 
         await admin.from('email_accounts')
             .update({ last_uid: maxUidSeen, last_synced_at: new Date().toISOString() })
             .eq('id', user.id);
 
-        res.status(200).json({ ok: true, newCount });
+        res.status(200).json({ ok: true, newCount, more: reachedLimit });
     } catch (err) {
         console.error('email-sync error:', err);
         res.status(500).json({ error: err.message || 'Internal server error' });

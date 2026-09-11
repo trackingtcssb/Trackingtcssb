@@ -4809,6 +4809,8 @@
             // app. Skips entirely (no interval, no request) until a mailbox is connected.
             useEffect(() => {
                 if (!profile || !emailAccount) return;
+                let cancelled = false;
+                let catchUpTimer = null;
                 const syncEmail = async () => {
                     try {
                         const { data: { session: liveSession } } = await supabase.auth.getSession();
@@ -4821,15 +4823,20 @@
                         // came back as a normal response and was silently doing nothing here.
                         const body = await res.json().catch(() => ({}));
                         if (!res.ok) throw new Error(body.error || `Sync failed (${res.status})`);
+                        if (cancelled) return;
                         setEmailSyncError('');
+                        // A sync that stopped at its own per-call limit still has a backlog
+                        // waiting; keep pulling instead of leaving it until the next poll.
+                        if (body.more) catchUpTimer = setTimeout(syncEmail, 3000);
                     } catch (e) {
+                        if (cancelled) return;
                         console.error('Email sync failed:', e);
                         setEmailSyncError(e.message || 'Sync failed');
                     }
                 };
                 syncEmail();
                 const interval = setInterval(syncEmail, EMAIL_SYNC_INTERVAL_MS);
-                return () => clearInterval(interval);
+                return () => { cancelled = true; clearInterval(interval); clearTimeout(catchUpTimer); };
             }, [profile?.id, !!emailAccount]);
 
             // --- Cross-device "who has this job open" presence + edit-lock ---------
