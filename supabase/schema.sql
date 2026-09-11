@@ -291,9 +291,12 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- profiles: self-service profile photo
+-- profiles: self-service profile photo, plus the job title and scanned
+-- signature that get printed on reports this person signs off.
 -- ---------------------------------------------------------------------------
 alter table public.profiles add column if not exists avatar_url text;
+alter table public.profiles add column if not exists designation text;
+alter table public.profiles add column if not exists signature_url text;
 
 -- ---------------------------------------------------------------------------
 -- Storage: profile photos (public bucket - avatars are meant to be visible to

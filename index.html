@@ -52,8 +52,25 @@
         .no-print { display: none !important; }
         .print-only { display: block !important; }
         body, html, #root, main { height: auto !important; overflow: visible !important; background: white !important; }
-        .print-section { width: 100%; margin: 0; padding: 0; border: none !important; box-shadow: none !important; background: white !important; }
-        .print-header { border-bottom: 3px solid #102a43; padding-bottom: 15px; margin-bottom: 20px; }
+        .print-section { width: 100%; margin: 0; padding: 0; border: none !important; box-shadow: none !important; background: white !important; font-size: 11px; }
+        .print-header { margin-bottom: 16px; }
+
+        /* On screen the report sections are banded in grey with a thick accent bar so they
+           stand out while being edited. On paper that reads as clutter — the same headings
+           print as a plain rule-under-caption, which is what a report like this should look
+           like. Table headers keep a light fill so columns stay readable. */
+        .print-section h4 {
+            background: transparent !important;
+            border-left: 0 !important;
+            padding: 0 0 3px 0 !important;
+            margin-bottom: 8px !important;
+            border-bottom: 1px solid #94a3b8 !important;
+        }
+        .print-section .bg-slate-100, .print-section .bg-slate-50\/50, .print-section .bg-slate-50 { background: transparent !important; }
+        .print-section .border-l-4 { border-left: 0 !important; padding-left: 0 !important; }
+        .print-section thead tr { background: #f1f5f9 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .print-section section, .print-section table, .print-section img { break-inside: avoid; }
+
         @page { margin: 15mm; size: A4; }
     }
     </style>
@@ -166,6 +183,10 @@
             engineer: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: true, canViewDiagnostic: true, canEditDiagnostic: true, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: true, canDeleteRecords: false, allowedStatuses: ['Diagnostic', 'Proceed Repair', 'Repairing', 'Repair Completed', 'Repair Failed', 'QC'] },
             mechanical: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: true, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: true, canDeleteRecords: false, allowedStatuses: ['Diagnostic', 'Proceed Repair', 'Repairing', 'Repair Completed', 'Repair Failed', 'QC'] },
             qc: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: false, canViewDiagnostic: true, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: true, canManageUsers: false, canTransferDepartment: false, canDeleteRecords: false, allowedStatuses: ['QC', 'Repairing', 'Delivery Arrangement'] },
+            // Supervises the electronic bench end to end: everything engineer, mechanical and
+            // qc can each do, combined (the QC segregation-of-duties notice still fires if the
+            // same person repaired and then signs off, it just doesn't block them).
+            electronic_supervisor: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: true, canViewDiagnostic: true, canEditDiagnostic: true, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: true, canManageUsers: false, canTransferDepartment: true, canDeleteRecords: false, allowedStatuses: ['Diagnostic', 'Proceed Repair', 'Repairing', 'Repair Completed', 'Repair Failed', 'QC', 'Delivery Arrangement'] },
             packaging: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: false, canEditReport: false, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: false, canSeeFullCustomerInfo: true, isDeliveryRole: true, canQC: false, canManageUsers: false, canTransferDepartment: false, canDeleteRecords: false, allowedStatuses: ['Delivery Arrangement', 'Delivered'] },
             logistic: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: false, canEditReport: false, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: false, canSeeFullCustomerInfo: true, isDeliveryRole: true, canQC: false, canManageUsers: false, canTransferDepartment: false, canDeleteRecords: false, allowedStatuses: ['Delivery Arrangement', 'Delivered'] },
             purchaser: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: false, canEditReport: false, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: true, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: false, canDeleteRecords: false, allowedStatuses: [] }
@@ -177,6 +198,7 @@
             engineer: 'Technical Engineer Unit',
             mechanical: 'Mechanical Technician',
             qc: 'QC Inspector',
+            electronic_supervisor: 'Electronic Supervisor',
             packaging: 'Packaging & Shipping Unit',
             logistic: 'Logistic / Delivery Unit',
             purchaser: 'Purchaser'
@@ -238,25 +260,21 @@
         const PrintLetterhead = ({ docTitle, refLabel, refValue, dateLabel, dateValue }) => {
             const contactLine = [COMPANY_INFO.address, COMPANY_INFO.phone, COMPANY_INFO.email, COMPANY_INFO.website].filter(Boolean).join('  •  ');
             return (
-                <div className="print-only print-header hidden mb-8">
-                    <div className="h-1.5 w-full bg-signal-600 mb-4 rounded-full"></div>
-                    <div className="flex justify-between items-start border-b-2 border-slate-900 pb-6">
-                        <div className="flex items-start gap-4">
-                            <img src="image_c20be5.png" alt="TCS logo" className="w-14 h-14 object-contain shrink-0" />
+                <div className="print-only print-header hidden mb-6">
+                    <div className="flex justify-between items-end gap-6 pb-3 border-b border-slate-900">
+                        <div className="flex items-center gap-3">
+                            <img src="image_c20be5.png" alt="TCS logo" className="w-10 h-10 object-contain shrink-0" />
                             <div>
-                                <h1 className="text-2xl font-black tracking-tight text-slate-900 m-0 uppercase">{COMPANY_INFO.name}</h1>
-                                <p className="text-xs font-semibold text-slate-600 mt-1">{COMPANY_INFO.tagline}</p>
-                                {contactLine && <p className="text-[10px] text-slate-500 mt-1.5">{contactLine}</p>}
-                                {COMPANY_INFO.regNo && <p className="text-[10px] text-slate-500 mt-0.5">Company Reg. No.: {COMPANY_INFO.regNo}</p>}
+                                <p className="text-sm font-black tracking-tight text-slate-900 m-0 uppercase leading-tight">{COMPANY_INFO.name}</p>
+                                {contactLine && <p className="text-[8px] text-slate-500 mt-0.5 leading-snug">{contactLine}</p>}
+                                {COMPANY_INFO.regNo && <p className="text-[8px] text-slate-500 leading-snug">Reg. No. {COMPANY_INFO.regNo}</p>}
                             </div>
                         </div>
-                        <div className="text-right text-xs">
-                            <p className="font-bold text-slate-900">{refLabel}: {refValue}</p>
-                            <p className="text-slate-600 mt-0.5">{dateLabel}: {dateValue}</p>
+                        <div className="text-right shrink-0">
+                            <h2 className="text-[11px] font-black tracking-widest uppercase text-slate-900 m-0">{docTitle}</h2>
+                            <p className="text-[9px] text-slate-600 mt-1">{refLabel}: <span className="font-bold text-slate-900">{refValue}</span></p>
+                            <p className="text-[9px] text-slate-600">{dateLabel}: {dateValue}</p>
                         </div>
-                    </div>
-                    <div className="bg-slate-100 py-2.5 text-center border-b border-slate-300 mt-4">
-                        <h2 className="text-xs font-black tracking-widest uppercase text-slate-900 m-0">{docTitle}</h2>
                     </div>
                 </div>
             );
@@ -269,6 +287,23 @@
                     <span>This document is confidential and issued for the addressee named above only.</span>
                     <span>Generated {new Date().toLocaleString()}</span>
                 </div>
+            </div>
+        );
+
+        // One signed-off-by block. `profile` is whoever is signing (their name, job title and
+        // uploaded signature come from My Profile, so each engineer signs as themselves rather
+        // than a hardcoded name/title); pass no profile for a blank line the recipient fills in
+        // by hand.
+        const SignatureBlock = ({ heading, profile, fallbackName, subtitle, showDateLine }) => (
+            <div>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{heading}</p>
+                <div className="h-14 flex items-end">
+                    {profile?.signature_url && <img src={profile.signature_url} alt="" className="max-h-14 max-w-[200px] object-contain" />}
+                </div>
+                <div className="border-b border-slate-900 mb-1.5"></div>
+                <p className="font-bold text-slate-900 text-sm">{profile?.name || fallbackName}</p>
+                {(profile?.designation || subtitle) && <p className="text-[10px] text-slate-600 mt-0.5">{profile?.designation || subtitle}</p>}
+                {showDateLine && <p className="text-[10px] text-slate-500 mt-1">Date: ______________________</p>}
             </div>
         );
 
@@ -1054,7 +1089,7 @@
             // stand-in, scoped locally since Dashboard only needs it for one action.
             const [confirmDelete, setConfirmDelete] = useState(null); // the repair to delete, or null
 
-            const canFilterMine = userRole === 'engineer' || userRole === 'qc' || userRole === 'mechanical';
+            const canFilterMine = ['engineer', 'qc', 'mechanical', 'electronic_supervisor'].includes(userRole);
 
             let filtered = repairs.filter(r => r.id.includes(searchTerm) || r.customerCompany.toLowerCase().includes(searchTerm.toLowerCase()) || r.serial.toLowerCase().includes(searchTerm.toLowerCase()));
             if (statusFilter !== 'All') filtered = filtered.filter(r => r.status === statusFilter);
@@ -1728,7 +1763,7 @@
         // when the photo preview overlay opens/closes). Nesting it inside App used to
         // cause the whole sub-tab state (active tab, edit buffers, etc.) to reset on
         // every unrelated App state change.
-        const ItemDetail = ({ repair, repairs, setRepairs, setSelectedRepair, perms, userRole, currentUserName, stock, setStock, navigateTo, setPreviewImage, loadData, onLogAudit, onCreateRequest, partRequests, viewersByJob, currentTabId, trackViewing, untrackViewing, onRequestEdit, onDeleteRepair }) => {
+        const ItemDetail = ({ repair, repairs, setRepairs, setSelectedRepair, perms, userRole, currentUserName, currentUserProfile, stock, setStock, navigateTo, setPreviewImage, loadData, onLogAudit, onCreateRequest, partRequests, viewersByJob, currentTabId, trackViewing, untrackViewing, onRequestEdit, onDeleteRepair }) => {
                 const selectedRepair = repair;
                 const [activeSubTab, setActiveSubTab] = useState('workflow');
                 const [showPartRequestModal, setShowPartRequestModal] = useState(false);
@@ -2182,7 +2217,7 @@
                                         })}
                                     </span>
                                     {perms.canRequestParts && (
-                                        <button disabled={dis} onClick={() => setShowPartRequestModal(true)} className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-lg text-xs font-bold transition shadow-sm flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
+                                        <button disabled={dis} onClick={() => setShowPartRequestModal(true)} className="bg-white border border-slate-300 text-slate-700 hover:border-brand-500 hover:text-brand-700 px-4 py-2.5 rounded-lg text-xs font-bold transition shadow-sm flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
                                             <i className="fa-solid fa-boxes-packing mr-1.5"></i> Request Another Part
                                         </button>
                                     )}
@@ -2202,7 +2237,7 @@
                                     <i className="fa-solid fa-ban mr-2"></i> Declare Repair Failed (BER)
                                 </button>
                                 {perms.canRequestParts && (
-                                    <button disabled={dis} onClick={() => setShowPartRequestModal(true)} className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
+                                    <button disabled={dis} onClick={() => setShowPartRequestModal(true)} className="bg-white border border-slate-300 text-slate-700 hover:border-brand-500 hover:text-brand-700 px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-sm flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
                                         <i className="fa-solid fa-cart-shopping mr-2"></i> Request Purchase
                                     </button>
                                 )}
@@ -2259,6 +2294,8 @@
                     }
                     return null;
                 };
+
+                const actionButtons = renderActionButtons();
 
                 return (
                     <div className="space-y-5 fade-in relative">
@@ -2322,7 +2359,7 @@
                         )}
 
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 md:p-8 no-print">
-                            <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
+                            <div className="flex flex-col gap-4">
                                 <div>
                                     <div className="flex items-center gap-3 mb-3 flex-wrap">
                                         <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">{selectedRepair.itemName}</h2>
@@ -2340,7 +2377,7 @@
                                         <span className="text-[11px] font-bold uppercase bg-slate-50 text-slate-600 border border-slate-200 px-2 py-1 rounded normal-case flex items-center gap-1.5">
                                             <i className="fa-regular fa-id-badge"></i>
                                             {selectedRepair.assignedEngineer ? `Assigned: ${selectedRepair.assignedEngineer}` : 'Unassigned'}
-                                            {!selectedRepair.assignedEngineer && (userRole === 'engineer' || userRole === 'mechanical') && !isLockedByOther && (
+                                            {!selectedRepair.assignedEngineer && ['engineer', 'mechanical', 'electronic_supervisor'].includes(userRole) && !isLockedByOther && (
                                                 <button onClick={handleAssignToMe} className="text-brand-700 underline font-bold">Assign to me</button>
                                             )}
                                         </span>
@@ -2352,8 +2389,17 @@
                                         )}
                                     </div>
                                 </div>
-                                {renderActionButtons()}
                             </div>
+
+                            {/* Status actions get their own panel rather than sitting beside the
+                                title — with three or more buttons the old inline row crowded the
+                                job name and wrapped awkwardly on narrow screens. */}
+                            {actionButtons && (
+                                <div className="mt-6 pt-5 border-t border-slate-200">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Actions</p>
+                                    <div className="flex flex-wrap items-center gap-3">{actionButtons}</div>
+                                </div>
+                            )}
 
                             <div className="flex border-b border-slate-200 mt-8 gap-8 overflow-x-auto custom-scrollbar">
                                 {[
@@ -2902,22 +2948,10 @@
                                     );
                                 })()}
 
-                                <div className="print-only hidden mt-16 pt-8 border-t-2 border-slate-900">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-12 text-sm">
-                                        <div>
-                                            <p className="font-bold text-slate-900 mb-12 uppercase tracking-wider text-xs">Diagnosed & Reported By:</p>
-                                            <div className="border-b border-slate-900 mb-2"></div>
-                                            <p className="font-black text-slate-900 text-base">{currentUserName}</p>
-                                            <p className="text-xs font-bold text-slate-700 mt-1">MBOT Qualified Technician</p>
-                                            <p className="text-xs text-slate-600 mt-0.5">Turbo Control Solutions Sdn Bhd</p>
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-slate-900 mb-12 uppercase tracking-wider text-xs">Client Quotation Approval:</p>
-                                            <div className="border-b border-slate-900 mb-2"></div>
-                                            <p className="font-bold text-slate-900 text-base">Authorized Representative</p>
-                                            <p className="text-xs text-slate-700 mt-1">{selectedRepair.customerCompany}</p>
-                                            <p className="text-xs text-slate-500 mt-0.5">Date: ________________________</p>
-                                        </div>
+                                <div className="print-only hidden mt-10 pt-5 border-t border-slate-900 break-inside-avoid">
+                                    <div className="grid grid-cols-2 gap-12">
+                                        <SignatureBlock heading="Diagnosed & Reported By" profile={currentUserProfile} fallbackName={currentUserName} subtitle={COMPANY_INFO.name} />
+                                        <SignatureBlock heading="Client Quotation Approval" fallbackName="Authorized Representative" subtitle={selectedRepair.customerCompany} showDateLine />
                                     </div>
                                 </div>
 
@@ -3256,22 +3290,10 @@
                                     </div>
                                 )}
 
-                                <div className="print-only hidden mt-16 pt-8 border-t-2 border-slate-900">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-12 text-sm">
-                                        <div>
-                                            <p className="font-bold text-slate-900 mb-12 uppercase tracking-wider text-xs">Certified & Tested By:</p>
-                                            <div className="border-b border-slate-900 mb-2"></div>
-                                            <p className="font-black text-slate-900 text-base">{currentUserName}</p>
-                                            <p className="text-xs font-bold text-slate-700 mt-1">MBOT Qualified Technician</p>
-                                            <p className="text-xs text-slate-600 mt-0.5">Turbo Control Solutions Sdn Bhd</p>
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-slate-900 mb-12 uppercase tracking-wider text-xs">Client Acceptance Sign-Off:</p>
-                                            <div className="border-b border-slate-900 mb-2"></div>
-                                            <p className="font-bold text-slate-900 text-base">Authorized Representative</p>
-                                            <p className="text-xs text-slate-700 mt-1">{selectedRepair.customerCompany}</p>
-                                            <p className="text-xs text-slate-500 mt-0.5">Date: ________________________</p>
-                                        </div>
+                                <div className="print-only hidden mt-10 pt-5 border-t border-slate-900 break-inside-avoid">
+                                    <div className="grid grid-cols-2 gap-12">
+                                        <SignatureBlock heading="Certified & Tested By" profile={currentUserProfile} fallbackName={currentUserName} subtitle={COMPANY_INFO.name} />
+                                        <SignatureBlock heading="Client Acceptance Sign-Off" fallbackName="Authorized Representative" subtitle={selectedRepair.customerCompany} showDateLine />
                                     </div>
                                 </div>
 
@@ -4407,10 +4429,11 @@
 
         const ProfilePage = ({ profile, setProfile, session, emailAccount, setEmailAccount, navigateTo }) => {
             const [name, setName] = useState(profile?.name || '');
+            const [designation, setDesignation] = useState(profile?.designation || '');
             const [savingName, setSavingName] = useState(false);
             const [nameSaved, setNameSaved] = useState(false);
-            const [uploadingAvatar, setUploadingAvatar] = useState(false);
-            const [avatarError, setAvatarError] = useState('');
+            const [uploading, setUploading] = useState('');
+            const [uploadError, setUploadError] = useState('');
             const [newPassword, setNewPassword] = useState('');
             const [confirmPassword, setConfirmPassword] = useState('');
             const [savingPassword, setSavingPassword] = useState(false);
@@ -4420,35 +4443,52 @@
                 e.preventDefault();
                 setSavingName(true);
                 setNameSaved(false);
-                const { error } = await supabase.from('profiles').update({ name }).eq('id', profile.id);
-                if (!error) { setProfile(prev => ({ ...prev, name })); setNameSaved(true); }
+                const { error } = await supabase.from('profiles').update({ name, designation }).eq('id', profile.id);
+                if (!error) { setProfile(prev => ({ ...prev, name, designation })); setNameSaved(true); }
                 else alert(error.message);
                 setSavingName(false);
             };
 
-            const handleAvatarPick = async (e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (!file) return;
-                setAvatarError('');
-                setUploadingAvatar(true);
+            // Shared by the profile photo and the scanned signature — both are images
+            // stored under this user's own folder in the avatars bucket, with the public
+            // URL cache-busted so a replacement shows immediately rather than the browser
+            // reusing what it cached for the same URL.
+            const uploadProfileImage = async (file, kind, column) => {
+                setUploadError('');
+                setUploading(kind);
                 try {
-                    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-                    const path = `${profile.id}/avatar.${ext}`;
+                    const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+                    const path = `${profile.id}/${kind}.${ext}`;
                     const { error: uploadErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
                     if (uploadErr) throw uploadErr;
                     const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-                    // Cache-bust so the new photo shows immediately instead of the browser
-                    // reusing whatever it had cached for this same URL.
-                    const avatarUrl = `${data.publicUrl}?v=${Date.now()}`;
-                    const { error: updateErr } = await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', profile.id);
+                    const url = `${data.publicUrl}?v=${Date.now()}`;
+                    const { error: updateErr } = await supabase.from('profiles').update({ [column]: url }).eq('id', profile.id);
                     if (updateErr) throw updateErr;
-                    setProfile(prev => ({ ...prev, avatar_url: avatarUrl }));
+                    setProfile(prev => ({ ...prev, [column]: url }));
                 } catch (err) {
-                    setAvatarError(err.message);
+                    setUploadError(err.message);
                 } finally {
-                    setUploadingAvatar(false);
+                    setUploading('');
                 }
+            };
+
+            const handleAvatarPick = (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) uploadProfileImage(file, 'avatar', 'avatar_url');
+            };
+
+            const handleSignaturePick = (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) uploadProfileImage(file, 'signature', 'signature_url');
+            };
+
+            const handleRemoveSignature = async () => {
+                const { error } = await supabase.from('profiles').update({ signature_url: null }).eq('id', profile.id);
+                if (error) { setUploadError(error.message); return; }
+                setProfile(prev => ({ ...prev, signature_url: null }));
             };
 
             const handleChangePassword = async (e) => {
@@ -4474,10 +4514,9 @@
                                 : <div className="w-16 h-16 rounded-full bg-brand-700 text-white text-xl font-black flex items-center justify-center">{(name || '?').charAt(0).toUpperCase()}</div>}
                             <div>
                                 <label className="inline-block cursor-pointer text-xs font-bold text-brand-700 hover:underline">
-                                    {uploadingAvatar ? 'Uploading…' : 'Change photo'}
-                                    <input type="file" accept="image/*" onChange={handleAvatarPick} disabled={uploadingAvatar} className="hidden" />
+                                    {uploading === 'avatar' ? 'Uploading…' : 'Change photo'}
+                                    <input type="file" accept="image/*" onChange={handleAvatarPick} disabled={!!uploading} className="hidden" />
                                 </label>
-                                {avatarError && <p className="text-xs text-red-600 mt-1">{avatarError}</p>}
                             </div>
                         </div>
                         <form onSubmit={handleSaveName} className="space-y-3">
@@ -4486,14 +4525,35 @@
                                 <input required value={name} onChange={e => { setName(e.target.value); setNameSaved(false); }} className="w-full border border-slate-300 rounded p-2.5 text-sm" />
                             </div>
                             <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Designation</label>
+                                <input value={designation} onChange={e => { setDesignation(e.target.value); setNameSaved(false); }} placeholder="e.g. MBOT Qualified Technician" className="w-full border border-slate-300 rounded p-2.5 text-sm" />
+                                <p className="text-[11px] text-slate-400 mt-1">Printed under your name on reports you sign off.</p>
+                            </div>
+                            <div>
                                 <label className="block text-xs font-bold text-slate-700 mb-1">Email (login)</label>
                                 <input disabled value={session?.user?.email || ''} className="w-full border border-slate-200 bg-slate-50 text-slate-500 rounded p-2.5 text-sm" />
                             </div>
                             <div className="flex items-center gap-3">
-                                <button disabled={savingName} type="submit" className="bg-brand-800 hover:bg-brand-900 text-white px-5 py-2 rounded font-bold text-sm shadow-md disabled:opacity-60">{savingName ? 'Saving…' : 'Save Name'}</button>
+                                <button disabled={savingName} type="submit" className="bg-brand-800 hover:bg-brand-900 text-white px-5 py-2 rounded font-bold text-sm shadow-md disabled:opacity-60">{savingName ? 'Saving…' : 'Save Details'}</button>
                                 {nameSaved && <span className="text-xs font-bold text-emerald-700"><i className="fa-solid fa-check mr-1"></i>Saved</span>}
                             </div>
                         </form>
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <h2 className="text-lg font-black text-slate-800 mb-1">Signature</h2>
+                        <p className="text-sm text-slate-500 mb-4">Upload a scan or photo of your signature (PNG with a transparent background works best). It's printed above your name on reports you sign off — leave it empty to print a blank signature line instead.</p>
+                        {profile?.signature_url && (
+                            <div className="border border-slate-200 rounded-lg p-4 bg-slate-50 mb-3 flex items-center justify-between gap-4">
+                                <img src={profile.signature_url} alt="Your signature" className="h-16 object-contain" />
+                                <button onClick={handleRemoveSignature} className="text-xs font-bold text-red-600 hover:underline shrink-0">Remove</button>
+                            </div>
+                        )}
+                        <label className="inline-block cursor-pointer bg-brand-800 hover:bg-brand-900 text-white px-5 py-2 rounded font-bold text-sm shadow-md">
+                            {uploading === 'signature' ? 'Uploading…' : (profile?.signature_url ? 'Replace Signature' : 'Upload Signature')}
+                            <input type="file" accept="image/*" onChange={handleSignaturePick} disabled={!!uploading} className="hidden" />
+                        </label>
+                        {uploadError && <p className="text-xs font-bold text-red-600 mt-2">{uploadError}</p>}
                     </div>
 
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -5187,6 +5247,7 @@
                                     perms={perms}
                                     userRole={userRole}
                                     currentUserName={currentUserName}
+                                    currentUserProfile={profile}
                                     stock={stock}
                                     setStock={setStock}
                                     navigateTo={navigateTo}
