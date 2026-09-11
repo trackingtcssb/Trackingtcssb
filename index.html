@@ -2092,13 +2092,23 @@
 
                     if (status === 'Diagnostic') {
                         return (
-                            <div className="flex gap-3 flex-wrap">
+                            <div className="flex gap-3 flex-wrap items-center">
                                 <button disabled={dis} onClick={() => updateStatus('Repair Failed')} className="bg-red-700 hover:bg-red-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
                                     <i className="fa-solid fa-ban mr-2"></i> Declare BER (Beyond Repair)
                                 </button>
-                                <button disabled={dis} onClick={() => updateStatus('Waiting PO')} className="bg-brand-800 hover:bg-brand-900 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
-                                    Advance: Waiting PO <i className="fa-solid fa-angles-right ml-2"></i>
-                                </button>
+                                {perms.allowedStatuses.includes('Waiting PO') ? (
+                                    <button disabled={dis} onClick={() => updateStatus('Waiting PO')} className="bg-brand-800 hover:bg-brand-900 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
+                                        Advance: Waiting PO <i className="fa-solid fa-angles-right ml-2"></i>
+                                    </button>
+                                ) : selectedRepair.readyForPO ? (
+                                    <span className="text-xs font-bold text-emerald-700 italic flex items-center bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5">
+                                        <i className="fa-solid fa-circle-check mr-2"></i> Admin notified — awaiting PO advance
+                                    </span>
+                                ) : (
+                                    <button disabled={dis} onClick={handleNotifyReadyForPO} className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
+                                        <i className="fa-solid fa-bell mr-2"></i> Notify Admin — Ready for PO
+                                    </button>
+                                )}
                             </div>
                         );
                     }
