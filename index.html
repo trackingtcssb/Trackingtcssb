@@ -52,8 +52,25 @@
         .no-print { display: none !important; }
         .print-only { display: block !important; }
         body, html, #root, main { height: auto !important; overflow: visible !important; background: white !important; }
-        .print-section { width: 100%; margin: 0; padding: 0; border: none !important; box-shadow: none !important; background: white !important; }
-        .print-header { border-bottom: 3px solid #102a43; padding-bottom: 15px; margin-bottom: 20px; }
+        .print-section { width: 100%; margin: 0; padding: 0; border: none !important; box-shadow: none !important; background: white !important; font-size: 11px; }
+        .print-header { margin-bottom: 16px; }
+
+        /* On screen the report sections are banded in grey with a thick accent bar so they
+           stand out while being edited. On paper that reads as clutter — the same headings
+           print as a plain rule-under-caption, which is what a report like this should look
+           like. Table headers keep a light fill so columns stay readable. */
+        .print-section h4 {
+            background: transparent !important;
+            border-left: 0 !important;
+            padding: 0 0 3px 0 !important;
+            margin-bottom: 8px !important;
+            border-bottom: 1px solid #94a3b8 !important;
+        }
+        .print-section .bg-slate-100, .print-section .bg-slate-50\/50, .print-section .bg-slate-50 { background: transparent !important; }
+        .print-section .border-l-4 { border-left: 0 !important; padding-left: 0 !important; }
+        .print-section thead tr { background: #f1f5f9 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .print-section section, .print-section table, .print-section img { break-inside: avoid; }
+
         @page { margin: 15mm; size: A4; }
     }
     </style>
@@ -64,7 +81,7 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo } = React;
 
-        const GOOGLE_SHEET_API = "https://script.google.com/macros/s/AKfycbyC8x_A-FHxszNxo0obKdNVCSE_e9MM2eFsxWaH2PWDAXHnAsPcxISIdnObtCuN_lAr/exec";
+        const GOOGLE_SHEET_API = "https://script.google.com/macros/s/AKfycbwZSU86ThSkZ1CmF-STt5rR_KzEpjFWBymhk_Ed-EZa7kQc1KXkt5vdBKqnUlFOFZGI/exec";
 
         // Relative path only works when this page and /api/polish-report are deployed
         // together on the same origin (e.g. this whole repo hosted on Vercel). If the
@@ -161,11 +178,15 @@
         const NEXT_WORKFLOW_STEP = { 'Draft': 'Diagnostic', 'Waiting PO': 'Proceed Repair', 'Proceed Repair': 'Repairing', 'Repair Completed': 'QC', 'Repair Failed': 'QC', 'QC': 'Delivery Arrangement', 'Delivery Arrangement': 'Delivered', 'Delivered': null };
 
         const ROLE_PERMISSIONS = {
-            superadmin: { canReceiveItem: true, canEditAdminPanel: true, canViewReport: true, canEditReport: true, canViewDiagnostic: true, canEditDiagnostic: true, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: true, canSeeFullCustomerInfo: true, isDeliveryRole: false, canQC: true, canManageUsers: true, canTransferDepartment: true, canDeleteRecords: true, allowedStatuses: WORKFLOW_STEPS },
-            admin: { canReceiveItem: true, canEditAdminPanel: true, canViewReport: true, canEditReport: false, canViewDiagnostic: true, canEditDiagnostic: false, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: true, canSeeFullCustomerInfo: true, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: true, canDeleteRecords: true, allowedStatuses: WORKFLOW_STEPS },
+            superadmin: { canReceiveItem: true, canEditAdminPanel: true, canViewReport: true, canEditReport: true, canViewDiagnostic: true, canEditDiagnostic: true, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: true, canSeeFullCustomerInfo: true, isDeliveryRole: false, canQC: true, canManageUsers: true, canTransferDepartment: true, canAssignEngineer: true, canDeleteRecords: true, allowedStatuses: WORKFLOW_STEPS },
+            admin: { canReceiveItem: true, canEditAdminPanel: true, canViewReport: true, canEditReport: false, canViewDiagnostic: true, canEditDiagnostic: false, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: true, canSeeFullCustomerInfo: true, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: true, canAssignEngineer: true, canDeleteRecords: true, allowedStatuses: WORKFLOW_STEPS },
             engineer: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: true, canViewDiagnostic: true, canEditDiagnostic: true, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: true, canDeleteRecords: false, allowedStatuses: ['Diagnostic', 'Proceed Repair', 'Repairing', 'Repair Completed', 'Repair Failed', 'QC'] },
             mechanical: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: true, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: true, canDeleteRecords: false, allowedStatuses: ['Diagnostic', 'Proceed Repair', 'Repairing', 'Repair Completed', 'Repair Failed', 'QC'] },
             qc: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: false, canViewDiagnostic: true, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: true, canManageUsers: false, canTransferDepartment: false, canDeleteRecords: false, allowedStatuses: ['QC', 'Repairing', 'Delivery Arrangement'] },
+            // Supervises the electronic bench end to end: everything engineer, mechanical and
+            // qc can each do, combined (the QC segregation-of-duties notice still fires if the
+            // same person repaired and then signs off, it just doesn't block them).
+            electronic_supervisor: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: true, canEditReport: true, canViewDiagnostic: true, canEditDiagnostic: true, canConsumeParts: true, canRequestParts: true, canManagePurchaseOrders: false, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: true, canManageUsers: false, canTransferDepartment: true, canAssignEngineer: true, canDeleteRecords: false, allowedStatuses: ['Diagnostic', 'Proceed Repair', 'Repairing', 'Repair Completed', 'Repair Failed', 'QC', 'Delivery Arrangement'] },
             packaging: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: false, canEditReport: false, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: false, canSeeFullCustomerInfo: true, isDeliveryRole: true, canQC: false, canManageUsers: false, canTransferDepartment: false, canDeleteRecords: false, allowedStatuses: ['Delivery Arrangement', 'Delivered'] },
             logistic: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: false, canEditReport: false, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: false, canSeeFullCustomerInfo: true, isDeliveryRole: true, canQC: false, canManageUsers: false, canTransferDepartment: false, canDeleteRecords: false, allowedStatuses: ['Delivery Arrangement', 'Delivered'] },
             purchaser: { canReceiveItem: false, canEditAdminPanel: false, canViewReport: false, canEditReport: false, canViewDiagnostic: false, canEditDiagnostic: false, canConsumeParts: false, canRequestParts: false, canManagePurchaseOrders: true, canSeeFullCustomerInfo: false, isDeliveryRole: false, canQC: false, canManageUsers: false, canTransferDepartment: false, canDeleteRecords: false, allowedStatuses: [] }
@@ -177,6 +198,7 @@
             engineer: 'Technical Engineer Unit',
             mechanical: 'Mechanical Technician',
             qc: 'QC Inspector',
+            electronic_supervisor: 'Electronic Supervisor',
             packaging: 'Packaging & Shipping Unit',
             logistic: 'Logistic / Delivery Unit',
             purchaser: 'Purchaser'
@@ -238,25 +260,21 @@
         const PrintLetterhead = ({ docTitle, refLabel, refValue, dateLabel, dateValue }) => {
             const contactLine = [COMPANY_INFO.address, COMPANY_INFO.phone, COMPANY_INFO.email, COMPANY_INFO.website].filter(Boolean).join('  •  ');
             return (
-                <div className="print-only print-header hidden mb-8">
-                    <div className="h-1.5 w-full bg-signal-600 mb-4 rounded-full"></div>
-                    <div className="flex justify-between items-start border-b-2 border-slate-900 pb-6">
-                        <div className="flex items-start gap-4">
-                            <img src="image_c20be5.png" alt="TCS logo" className="w-14 h-14 object-contain shrink-0" />
+                <div className="print-only print-header hidden mb-6">
+                    <div className="flex justify-between items-end gap-6 pb-3 border-b border-slate-900">
+                        <div className="flex items-center gap-3">
+                            <img src="image_c20be5.png" alt="TCS logo" className="w-10 h-10 object-contain shrink-0" />
                             <div>
-                                <h1 className="text-2xl font-black tracking-tight text-slate-900 m-0 uppercase">{COMPANY_INFO.name}</h1>
-                                <p className="text-xs font-semibold text-slate-600 mt-1">{COMPANY_INFO.tagline}</p>
-                                {contactLine && <p className="text-[10px] text-slate-500 mt-1.5">{contactLine}</p>}
-                                {COMPANY_INFO.regNo && <p className="text-[10px] text-slate-500 mt-0.5">Company Reg. No.: {COMPANY_INFO.regNo}</p>}
+                                <p className="text-sm font-black tracking-tight text-slate-900 m-0 uppercase leading-tight">{COMPANY_INFO.name}</p>
+                                {contactLine && <p className="text-[8px] text-slate-500 mt-0.5 leading-snug">{contactLine}</p>}
+                                {COMPANY_INFO.regNo && <p className="text-[8px] text-slate-500 leading-snug">Reg. No. {COMPANY_INFO.regNo}</p>}
                             </div>
                         </div>
-                        <div className="text-right text-xs">
-                            <p className="font-bold text-slate-900">{refLabel}: {refValue}</p>
-                            <p className="text-slate-600 mt-0.5">{dateLabel}: {dateValue}</p>
+                        <div className="text-right shrink-0">
+                            <h2 className="text-[11px] font-black tracking-widest uppercase text-slate-900 m-0">{docTitle}</h2>
+                            <p className="text-[9px] text-slate-600 mt-1">{refLabel}: <span className="font-bold text-slate-900">{refValue}</span></p>
+                            <p className="text-[9px] text-slate-600">{dateLabel}: {dateValue}</p>
                         </div>
-                    </div>
-                    <div className="bg-slate-100 py-2.5 text-center border-b border-slate-300 mt-4">
-                        <h2 className="text-xs font-black tracking-widest uppercase text-slate-900 m-0">{docTitle}</h2>
                     </div>
                 </div>
             );
@@ -267,8 +285,25 @@
                 {terms && <p className="text-[9px] text-slate-500 leading-relaxed mb-3">{terms}</p>}
                 <div className="flex justify-between text-[9px] text-slate-400">
                     <span>This document is confidential and issued for the addressee named above only.</span>
-                    <span>Generated {new Date().toLocaleString()}</span>
+                    <span>Generated {formatDateTime(new Date())}</span>
                 </div>
+            </div>
+        );
+
+        // One signed-off-by block. `profile` is whoever is signing (their name, job title and
+        // uploaded signature come from My Profile, so each engineer signs as themselves rather
+        // than a hardcoded name/title); pass no profile for a blank line the recipient fills in
+        // by hand.
+        const SignatureBlock = ({ heading, profile, fallbackName, subtitle, showDateLine }) => (
+            <div>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{heading}</p>
+                <div className="h-14 flex items-end">
+                    {profile?.signature_url && <img src={profile.signature_url} alt="" className="max-h-14 max-w-[200px] object-contain" />}
+                </div>
+                <div className="border-b border-slate-900 mb-1.5"></div>
+                <p className="font-bold text-slate-900 text-sm">{profile?.name || fallbackName}</p>
+                {(profile?.designation || subtitle) && <p className="text-[10px] text-slate-600 mt-0.5">{profile?.designation || subtitle}</p>}
+                {showDateLine && <p className="text-[10px] text-slate-500 mt-1">Date: ______________________</p>}
             </div>
         );
 
@@ -313,6 +348,23 @@
             const day = String(date.getDate()).padStart(2, '0');
             const month = String(date.getMonth() + 1).padStart(2, '0');
             return `${day}/${month}/${date.getFullYear()} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+        };
+
+        // Date-only counterpart to formatDateTime, same dd/mm/yyyy shape everywhere in the
+        // app regardless of the viewer's device locale (a plain toLocaleDateString() would
+        // show mm/dd/yyyy on a US-locale phone and dd/mm/yyyy on everyone else's).
+        const formatDate = (value) => {
+            if (!value) return '—';
+            // A plain "yyyy-mm-dd" (every <input type="date"> in this app stores one) has no
+            // timezone of its own - handled as its own case so it isn't reinterpreted as UTC
+            // midnight and shifted a day off in timezones behind UTC.
+            const plainDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+            if (plainDate) return `${plainDate[3]}/${plainDate[2]}/${plainDate[1]}`;
+            const date = new Date(value);
+            if (isNaN(date.getTime())) return value;
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            return `${day}/${month}/${date.getFullYear()}`;
         };
 
         // Status badges render as a small LED-style indicator dot + label, echoing a control-panel readout.
@@ -542,6 +594,33 @@
         const requestTotal = (request) => (request.items || []).reduce((sum, it) => sum + lineTotal(it), 0);
         const formatMoney = (value) => (Number(value) || 0).toFixed(2);
 
+        // Lead time is free text (placeholder "e.g. 1 week") since suppliers quote it every
+        // which way - only bother computing an actual estimated-arrival date for the simple,
+        // common "<number> day(s)/week(s)/month(s)" shape. Anything else (a range, "TBD", a
+        // supplier name) just isn't a date we can fabricate, so callers fall back to showing
+        // the raw lead time text instead.
+        const parseLeadTimeDays = (text) => {
+            const m = String(text || '').trim().match(/^(\d+(?:\.\d+)?)\s*(day|week|month)s?$/i);
+            if (!m) return null;
+            const n = parseFloat(m[1]);
+            const unit = m[2].toLowerCase();
+            return Math.round(unit === 'day' ? n : unit === 'week' ? n * 7 : n * 30);
+        };
+        const estimatedArrivalDate = (item) => {
+            if (!item.orderDate) return null;
+            const days = parseLeadTimeDays(item.leadTime);
+            if (days == null) return null;
+            // item.orderDate is a plain "yyyy-mm-dd" from an <input type="date">, not a real
+            // UTC instant - parsed and re-serialized as calendar-date arithmetic in UTC (noon,
+            // to stay well clear of any DST edge) so it can't drift a day off in either
+            // direction depending on the viewer's own timezone.
+            const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(item.orderDate);
+            if (!parts) return null;
+            const d = new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]), 12));
+            d.setUTCDate(d.getUTCDate() + days);
+            return d.toISOString().slice(0, 10);
+        };
+
         // Purchase requests raised before this moved to Supabase live in the old Google Sheet as
         // one flat row per line item. They're folded back into the same shape as current requests
         // so the history stays visible, but they're read-only — the Sheet has no columns for the
@@ -739,7 +818,11 @@
             const updateItem = (idx, patch) => setItems(items.map((it, i) => i === idx ? { ...it, ...patch } : it));
             const commit = (extra) => onUpdate(group.requestId || group.id, { platform, trackingNumber, trackingLink, items, ...extra });
 
-            const fieldClass = "w-full border border-slate-300 rounded p-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none";
+            // Explicit bg-white matters here specifically for the two <input type="date">
+            // fields below (Order Date / Received Date): mobile Safari renders an empty
+            // date input with its own grey "well" background unless one is set, which read
+            // as disabled/unusable even though the field was always editable.
+            const fieldClass = "w-full border border-slate-300 rounded p-2 text-sm bg-white focus:ring-2 focus:ring-brand-500 outline-none";
             const labelClass = "block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1";
 
             return (
@@ -822,6 +905,15 @@
                                                                         <input type="date" value={it.receivedDate || ''} onChange={e => updateItem(i, { receivedDate: e.target.value })} className={fieldClass} />
                                                                     </div>
                                                                 </div>
+                                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                                                    <div>
+                                                                        <label className={labelClass}>Lead Time</label>
+                                                                        <input placeholder="e.g. 1 week" value={it.leadTime || ''} onChange={e => updateItem(i, { leadTime: e.target.value })} className={fieldClass} />
+                                                                    </div>
+                                                                </div>
+                                                                {it.orderDate && estimatedArrivalDate(it) && (
+                                                                    <p className="text-[11px] font-bold text-slate-500"><i className="fa-regular fa-calendar-check mr-1"></i>Est. arrival: {formatDate(estimatedArrivalDate(it))} (based on the {it.leadTime} lead time above)</p>
+                                                                )}
                                                                 <input placeholder="Remark (backorder, substitute, price change...)" value={it.remark || ''} onChange={e => updateItem(i, { remark: e.target.value })} className={fieldClass} />
                                                                 {outstanding > 0 && (Number(it.qtyReceived) || 0) > 0 && (
                                                                     <p className="text-[11px] font-bold text-amber-700"><i className="fa-solid fa-triangle-exclamation mr-1"></i>{outstanding} still outstanding</p>
@@ -829,8 +921,13 @@
                                                             </div>
                                                         ) : (
                                                             <div className="text-xs text-slate-600 flex flex-wrap gap-x-4 gap-y-1">
-                                                                <span>Ordered: <b>{it.qtyOrdered || '—'}</b>{it.orderDate ? ` on ${it.orderDate}` : ''}</span>
-                                                                <span>Received: <b>{it.qtyReceived || '—'}</b>{it.receivedDate ? ` on ${it.receivedDate}` : ''}</span>
+                                                                <span>Ordered: <b>{it.qtyOrdered || '—'}</b>{it.orderDate ? ` on ${formatDate(it.orderDate)}` : ''}</span>
+                                                                <span>Received: <b>{it.qtyReceived || '—'}</b>{it.receivedDate ? ` on ${formatDate(it.receivedDate)}` : ''}</span>
+                                                                {it.orderDate && (
+                                                                    estimatedArrivalDate(it)
+                                                                        ? <span>Est. arrival: <b>{formatDate(estimatedArrivalDate(it))}</b></span>
+                                                                        : (it.leadTime && <span>Lead time: <b>{it.leadTime}</b> from order</span>)
+                                                                )}
                                                                 {it.remark && <span className="w-full text-slate-500 italic">{it.remark}</span>}
                                                             </div>
                                                         )}
@@ -1014,7 +1111,7 @@
             // stand-in, scoped locally since Dashboard only needs it for one action.
             const [confirmDelete, setConfirmDelete] = useState(null); // the repair to delete, or null
 
-            const canFilterMine = userRole === 'engineer' || userRole === 'qc' || userRole === 'mechanical';
+            const canFilterMine = ['engineer', 'qc', 'mechanical', 'electronic_supervisor'].includes(userRole);
 
             let filtered = repairs.filter(r => r.id.includes(searchTerm) || r.customerCompany.toLowerCase().includes(searchTerm.toLowerCase()) || r.serial.toLowerCase().includes(searchTerm.toLowerCase()));
             if (statusFilter !== 'All') filtered = filtered.filter(r => r.status === statusFilter);
@@ -1688,7 +1785,7 @@
         // when the photo preview overlay opens/closes). Nesting it inside App used to
         // cause the whole sub-tab state (active tab, edit buffers, etc.) to reset on
         // every unrelated App state change.
-        const ItemDetail = ({ repair, repairs, setRepairs, setSelectedRepair, perms, userRole, currentUserName, stock, setStock, navigateTo, setPreviewImage, loadData, onLogAudit, onCreateRequest, partRequests, viewersByJob, currentTabId, trackViewing, untrackViewing, onRequestEdit, onDeleteRepair }) => {
+        const ItemDetail = ({ repair, repairs, setRepairs, setSelectedRepair, perms, userRole, currentUserName, currentUserProfile, users, stock, setStock, navigateTo, setPreviewImage, loadData, onLogAudit, onCreateRequest, partRequests, viewersByJob, currentTabId, trackViewing, untrackViewing, onRequestEdit, onDeleteRepair }) => {
                 const selectedRepair = repair;
                 const [activeSubTab, setActiveSubTab] = useState('workflow');
                 const [showPartRequestModal, setShowPartRequestModal] = useState(false);
@@ -1738,6 +1835,12 @@
                 // (who wasn't allowed to touch it earlier) can still correct it.
                 const repairInProgress = WORKFLOW_STEPS.indexOf(selectedRepair.status) >= WORKFLOW_STEPS.indexOf('Proceed Repair');
                 const canEditDiagnosticNow = userRole === 'superadmin' || (repairInProgress ? perms.canEditAdminPanel : perms.canEditDiagnostic);
+
+                // The Repair & Engineering Report (write-up of the actual repair work) is a
+                // separate document from the pre-repair quotation above, with its own
+                // permission flag (canEditReport) -- it does NOT lock once repair starts, since
+                // 'Repairing' is exactly when engineering is supposed to be filling it in.
+                const canEditRepairReportNow = perms.canEditReport;
 
                 useEffect(() => {
                     trackViewing(selectedRepair.id, Date.now());
@@ -1791,7 +1894,15 @@
                 const updateStatus = async (newStatus) => {
                     if (guardLock()) return;
                     if (!perms.allowedStatuses.includes(newStatus)) return alert(`Role restriction prohibits moving to ${newStatus}.`);
-                    if (!(await askConfirm(`Are you sure you want to change status to: ${newStatus}?`))) return;
+
+                    // Advancing out of Waiting PO is normally gated on having a PO on file, but
+                    // admin can still choose to proceed without one (e.g. a verbal/emailed
+                    // approval) -- this just makes sure that's a deliberate choice, not a
+                    // missed step, instead of silently letting the job move on with nothing
+                    // attached.
+                    if (newStatus === 'Proceed Repair' && selectedRepair.status === 'Waiting PO' && !(selectedRepair.poDocuments || []).length) {
+                        if (!(await askConfirm('No PO document has been uploaded for this job yet. Proceed to repair anyway without a PO on file?'))) return;
+                    } else if (!(await askConfirm(`Are you sure you want to change status to: ${newStatus}?`))) return;
 
                     const updated = appendAuditEntry({ ...selectedRepair, status: newStatus, pendingElectronicPickup: false, pendingMechanicalPickup: false, readyForPO: false }, { type: 'status', status: newStatus, by: userRole, byName: currentUserName, detail: `Status changed to ${newStatus}` });
                     setRepairs(repairs.map(r => r.id === updated.id ? updated : r)); setSelectedRepair(updated);
@@ -1927,6 +2038,28 @@
                     let updated = { ...selectedRepair, assignedEngineer: currentUserName };
                     updated = appendAuditEntry(updated, { type: 'edit', status: 'Job Assigned', by: userRole, byName: currentUserName, detail: `${currentUserName} self-assigned this job` });
                     setRepairs(repairs.map(r => r.id === updated.id ? updated : r)); setSelectedRepair(updated);
+                };
+
+                // Anyone who works the bench is assignable, whatever their own role — a
+                // supervisor can hand a job to an engineer, a mechanical tech, or another
+                // supervisor. Inactive accounts are left out so they can't be handed work.
+                const assignableUsers = (users || []).filter(u =>
+                    ['engineer', 'mechanical', 'electronic_supervisor'].includes(u.role) && u.status !== 'Inactive'
+                );
+
+                const handleReassign = (name) => {
+                    if (guardLock()) return;
+                    const previous = selectedRepair.assignedEngineer || 'Unassigned';
+                    if (name === (selectedRepair.assignedEngineer || '')) return;
+                    let updated = { ...selectedRepair, assignedEngineer: name };
+                    updated = appendAuditEntry(updated, {
+                        type: 'edit',
+                        status: name ? 'Job Reassigned' : 'Job Unassigned',
+                        by: userRole, byName: currentUserName,
+                        detail: name ? `Reassigned from ${previous} to ${name} by ${currentUserName}` : `${previous} unassigned from this job by ${currentUserName}`,
+                    });
+                    setRepairs(repairs.map(r => r.id === updated.id ? updated : r)); setSelectedRepair(updated);
+                    showToast(name ? `Job reassigned to ${name}.` : 'Job set back to unassigned.');
                 };
 
                 const handleTransferDepartment = async (targetDept) => {
@@ -2092,13 +2225,23 @@
 
                     if (status === 'Diagnostic') {
                         return (
-                            <div className="flex gap-3 flex-wrap">
+                            <div className="flex gap-3 flex-wrap items-center">
                                 <button disabled={dis} onClick={() => updateStatus('Repair Failed')} className="bg-red-700 hover:bg-red-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
                                     <i className="fa-solid fa-ban mr-2"></i> Declare BER (Beyond Repair)
                                 </button>
-                                <button disabled={dis} onClick={() => updateStatus('Waiting PO')} className="bg-brand-800 hover:bg-brand-900 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
-                                    Advance: Waiting PO <i className="fa-solid fa-angles-right ml-2"></i>
-                                </button>
+                                {perms.allowedStatuses.includes('Waiting PO') ? (
+                                    <button disabled={dis} onClick={() => updateStatus('Waiting PO')} className="bg-brand-800 hover:bg-brand-900 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
+                                        Advance: Waiting PO <i className="fa-solid fa-angles-right ml-2"></i>
+                                    </button>
+                                ) : selectedRepair.readyForPO ? (
+                                    <span className="text-xs font-bold text-emerald-700 italic flex items-center bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5">
+                                        <i className="fa-solid fa-circle-check mr-2"></i> Admin notified — awaiting PO advance
+                                    </span>
+                                ) : (
+                                    <button disabled={dis} onClick={handleNotifyReadyForPO} className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
+                                        <i className="fa-solid fa-bell mr-2"></i> Notify Admin — Ready for PO
+                                    </button>
+                                )}
                             </div>
                         );
                     }
@@ -2106,11 +2249,19 @@
                         if (selectedRepair.awaitingPart) {
                             return (
                                 <div className="flex gap-3 items-center flex-wrap">
-                                    <span className="text-xs font-bold text-amber-700 italic flex items-center bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5">
-                                        <i className="fa-solid fa-hourglass-half mr-2"></i> Waiting Part — repair paused ({(selectedRepair.awaitingPartRequestIds || []).join(', ')})
+                                    <span className="text-xs font-bold text-amber-700 italic flex items-center bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 flex-wrap gap-x-2">
+                                        <span className="flex items-center"><i className="fa-solid fa-hourglass-half mr-2"></i>Waiting Part — repair paused:</span>
+                                        {(selectedRepair.awaitingPartRequestIds || []).map(reqId => {
+                                            const req = (partRequests || []).find(p => p.id === reqId || p.requestId === reqId);
+                                            return (
+                                                <span key={reqId} className="not-italic font-mono">
+                                                    {reqId}{req ? <span className={`ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${PURCHASE_STATUS_STYLE[req.status] || PURCHASE_STATUS_STYLE.Requested}`}>{req.status}</span> : null}
+                                                </span>
+                                            );
+                                        })}
                                     </span>
                                     {perms.canRequestParts && (
-                                        <button disabled={dis} onClick={() => setShowPartRequestModal(true)} className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-lg text-xs font-bold transition shadow-sm flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
+                                        <button disabled={dis} onClick={() => setShowPartRequestModal(true)} className="bg-white border border-slate-300 text-slate-700 hover:border-brand-500 hover:text-brand-700 px-4 py-2.5 rounded-lg text-xs font-bold transition shadow-sm flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
                                             <i className="fa-solid fa-boxes-packing mr-1.5"></i> Request Another Part
                                         </button>
                                     )}
@@ -2129,11 +2280,8 @@
                                 <button disabled={dis} onClick={() => updateStatus('Repair Failed')} className="bg-red-700 hover:bg-red-800 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
                                     <i className="fa-solid fa-ban mr-2"></i> Declare Repair Failed (BER)
                                 </button>
-                                {perms.canRequestParts && (
-                                    <button disabled={dis} onClick={() => setShowPartRequestModal(true)} className="bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
-                                        <i className="fa-solid fa-cart-shopping mr-2"></i> Request Purchase
-                                    </button>
-                                )}
+                                {/* Requesting a purchase lives on the Parts & Execution tab, next to
+                                    the stock it's about — this panel is for moving the job's status. */}
                                 <button disabled={dis} onClick={() => updateStatus('Repair Completed')} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition shadow-md flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
                                     Repair Completed (Successful) <i className="fa-solid fa-check ml-2"></i>
                                 </button>
@@ -2187,6 +2335,8 @@
                     }
                     return null;
                 };
+
+                const actionButtons = renderActionButtons();
 
                 return (
                     <div className="space-y-5 fade-in relative">
@@ -2250,7 +2400,7 @@
                         )}
 
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 md:p-8 no-print">
-                            <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
+                            <div className="flex flex-col gap-4">
                                 <div>
                                     <div className="flex items-center gap-3 mb-3 flex-wrap">
                                         <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">{selectedRepair.itemName}</h2>
@@ -2264,12 +2414,31 @@
                                     </div>
                                     <div className="flex items-center gap-2 flex-wrap mt-3">
                                         {selectedRepair.warrantyType === 'W' && <span className="text-[11px] font-bold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-1 rounded"><i className="fa-solid fa-shield-halved mr-1"></i>Warranty Claim</span>}
-                                        {selectedRepair.promisedDate && <span className="text-[11px] font-bold uppercase bg-slate-50 text-slate-600 border border-slate-200 px-2 py-1 rounded"><i className="fa-regular fa-calendar mr-1"></i>Promised: {selectedRepair.promisedDate}</span>}
+                                        {selectedRepair.promisedDate && <span className="text-[11px] font-bold uppercase bg-slate-50 text-slate-600 border border-slate-200 px-2 py-1 rounded"><i className="fa-regular fa-calendar mr-1"></i>Promised: {formatDate(selectedRepair.promisedDate)}</span>}
                                         <span className="text-[11px] font-bold uppercase bg-slate-50 text-slate-600 border border-slate-200 px-2 py-1 rounded normal-case flex items-center gap-1.5">
                                             <i className="fa-regular fa-id-badge"></i>
-                                            {selectedRepair.assignedEngineer ? `Assigned: ${selectedRepair.assignedEngineer}` : 'Unassigned'}
-                                            {!selectedRepair.assignedEngineer && (userRole === 'engineer' || userRole === 'mechanical') && !isLockedByOther && (
-                                                <button onClick={handleAssignToMe} className="text-brand-700 underline font-bold">Assign to me</button>
+                                            {perms.canAssignEngineer && !isLockedByOther ? (
+                                                <React.Fragment>
+                                                    Assigned:
+                                                    <select
+                                                        value={selectedRepair.assignedEngineer || ''}
+                                                        onChange={e => handleReassign(e.target.value)}
+                                                        className="bg-white border border-slate-300 rounded px-1.5 py-0.5 text-[11px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer"
+                                                    >
+                                                        <option value="">Unassigned</option>
+                                                        {assignableUsers.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+                                                        {selectedRepair.assignedEngineer && !assignableUsers.some(u => u.name === selectedRepair.assignedEngineer) && (
+                                                            <option value={selectedRepair.assignedEngineer}>{selectedRepair.assignedEngineer}</option>
+                                                        )}
+                                                    </select>
+                                                </React.Fragment>
+                                            ) : (
+                                                <React.Fragment>
+                                                    {selectedRepair.assignedEngineer ? `Assigned: ${selectedRepair.assignedEngineer}` : 'Unassigned'}
+                                                    {!selectedRepair.assignedEngineer && ['engineer', 'mechanical', 'electronic_supervisor'].includes(userRole) && !isLockedByOther && (
+                                                        <button onClick={handleAssignToMe} className="text-brand-700 underline font-bold">Assign to me</button>
+                                                    )}
+                                                </React.Fragment>
                                             )}
                                         </span>
                                         {perms.canTransferDepartment && !isLockedByOther && (
@@ -2280,8 +2449,17 @@
                                         )}
                                     </div>
                                 </div>
-                                {renderActionButtons()}
                             </div>
+
+                            {/* Status actions get their own panel rather than sitting beside the
+                                title — with three or more buttons the old inline row crowded the
+                                job name and wrapped awkwardly on narrow screens. */}
+                            {actionButtons && (
+                                <div className="mt-6 pt-5 border-t border-slate-200">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Actions</p>
+                                    <div className="flex flex-wrap items-center gap-3">{actionButtons}</div>
+                                </div>
+                            )}
 
                             <div className="flex border-b border-slate-200 mt-8 gap-8 overflow-x-auto custom-scrollbar">
                                 {[
@@ -2393,13 +2571,19 @@
                                                             </div>
                                                             <div className="mt-2 text-xs text-slate-700 space-y-1.5">
                                                                 {(g.items || []).map((it, i) => (
-                                                                    <div key={i} className="flex items-center gap-2">
+                                                                    <div key={i} className="flex items-center gap-2 flex-wrap">
                                                                         {it.photoUrl && <img src={it.photoUrl} alt={it.partName} className="w-7 h-7 object-cover rounded border border-slate-200 shrink-0" />}
                                                                         <span>{it.partName || it.itemName || it.partNo} <span className="text-slate-400">x{it.qty}</span>
                                                                             {it.kind === 'one-off' && <span className="ml-1 text-[9px] bg-cyan-100 text-cyan-800 px-1 py-0.5 rounded font-bold uppercase">One-off</span>}
                                                                             {it.kind === 'new-stock' && <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold uppercase">New</span>}
                                                                             {Number(it.qtyReceived) > 0 && <span className="ml-1 text-[9px] bg-emerald-100 text-emerald-700 px-1 py-0.5 rounded font-bold uppercase">{it.qtyReceived} received</span>}
                                                                         </span>
+                                                                        {it.orderDate && <span className="text-[11px] text-slate-500"><i className="fa-regular fa-calendar mr-1"></i>Ordered {formatDate(it.orderDate)}</span>}
+                                                                        {it.orderDate && (
+                                                                            estimatedArrivalDate(it)
+                                                                                ? <span className="text-[11px] text-slate-500"><i className="fa-regular fa-calendar-check mr-1"></i>Est. arrival {formatDate(estimatedArrivalDate(it))}</span>
+                                                                                : (it.leadTime && <span className="text-[11px] text-slate-500"><i className="fa-regular fa-clock mr-1"></i>{it.leadTime} lead time</span>)
+                                                                        )}
                                                                         {it.purchaseLink && <a href={it.purchaseLink} target="_blank" rel="noreferrer" className="text-brand-700 font-bold hover:underline"><i className="fa-solid fa-arrow-up-right-from-square"></i></a>}
                                                                     </div>
                                                                 ))}
@@ -2597,7 +2781,7 @@
                                     </button>
                                 </div>
 
-                                <PrintLetterhead docTitle="EQUIPMENT INTAKE / CHAIN-OF-CUSTODY RECEIPT" refLabel="Intake Ref" refValue={selectedRepair.id} dateLabel="Received" dateValue={selectedRepair.dateReceived} />
+                                <PrintLetterhead docTitle="EQUIPMENT INTAKE / CHAIN-OF-CUSTODY RECEIPT" refLabel="Intake Ref" refValue={selectedRepair.id} dateLabel="Received" dateValue={formatDate(selectedRepair.dateReceived)} />
 
                                 <div className="no-print p-3 mb-6 rounded-lg text-xs font-bold border bg-indigo-50 text-indigo-800 border-indigo-200 flex items-center">
                                     <i className="fa-solid fa-circle-info mr-2 text-sm"></i>
@@ -2618,7 +2802,7 @@
                                             <div><span className="text-slate-500">Item:</span> <strong className="text-slate-900">{selectedRepair.itemName}</strong></div>
                                             <div><span className="text-slate-500">Brand / Model:</span> <strong className="text-slate-900">{selectedRepair.brand} {selectedRepair.model}</strong></div>
                                             <div><span className="text-slate-500">Serial No.:</span> <strong className="font-mono text-brand-700">{selectedRepair.serial}</strong></div>
-                                            <div><span className="text-slate-500">Date Received:</span> <strong className="text-slate-900">{selectedRepair.dateReceived}</strong></div>
+                                            <div><span className="text-slate-500">Date Received:</span> <strong className="text-slate-900">{formatDate(selectedRepair.dateReceived)}</strong></div>
                                             <div><span className="text-slate-500">Coverage:</span> <strong className="text-slate-900">{selectedRepair.warrantyType === 'W' ? 'Warranty Claim' : 'Standard Commercial Repair'}</strong></div>
                                         </div>
                                     </div>
@@ -2739,7 +2923,7 @@
                                     This report is issued BEFORE repair work proceeds — share the customer-facing version with the client to discuss and approve the repair quotation.
                                 </div>
 
-                                <PrintLetterhead docTitle="ELECTRONIC DIAGNOSTIC REPORT — FOR QUOTATION REVIEW" refLabel="Diagnostic Report Ref" refValue={selectedRepair.id} dateLabel="Date" dateValue={new Date().toLocaleDateString()} />
+                                <PrintLetterhead docTitle="ELECTRONIC DIAGNOSTIC REPORT — FOR QUOTATION REVIEW" refLabel="Diagnostic Report Ref" refValue={selectedRepair.id} dateLabel="Date" dateValue={formatDate(new Date())} />
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8 border border-slate-300 rounded-lg overflow-hidden bg-slate-50/50">
                                     <div className="p-4 border-r border-slate-300">
@@ -2830,22 +3014,10 @@
                                     );
                                 })()}
 
-                                <div className="print-only hidden mt-16 pt-8 border-t-2 border-slate-900">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-12 text-sm">
-                                        <div>
-                                            <p className="font-bold text-slate-900 mb-12 uppercase tracking-wider text-xs">Diagnosed & Reported By:</p>
-                                            <div className="border-b border-slate-900 mb-2"></div>
-                                            <p className="font-black text-slate-900 text-base">{currentUserName}</p>
-                                            <p className="text-xs font-bold text-slate-700 mt-1">MBOT Qualified Technician</p>
-                                            <p className="text-xs text-slate-600 mt-0.5">Turbo Control Solutions Sdn Bhd</p>
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-slate-900 mb-12 uppercase tracking-wider text-xs">Client Quotation Approval:</p>
-                                            <div className="border-b border-slate-900 mb-2"></div>
-                                            <p className="font-bold text-slate-900 text-base">Authorized Representative</p>
-                                            <p className="text-xs text-slate-700 mt-1">{selectedRepair.customerCompany}</p>
-                                            <p className="text-xs text-slate-500 mt-0.5">Date: ________________________</p>
-                                        </div>
+                                <div className="print-only hidden mt-10 pt-5 border-t border-slate-900 break-inside-avoid">
+                                    <div className="grid grid-cols-2 gap-12">
+                                        <SignatureBlock heading="Diagnosed & Reported By" profile={currentUserProfile} fallbackName={currentUserName} subtitle={COMPANY_INFO.name} />
+                                        <SignatureBlock heading="Client Quotation Approval" fallbackName="Authorized Representative" subtitle={selectedRepair.customerCompany} showDateLine />
                                     </div>
                                 </div>
 
@@ -2890,7 +3062,7 @@
                                     {reportMode === 'internal' ? 'INTERNAL MODE: All exact part numbers, technical findings, and logs are visible.' : 'CUSTOMER MODE: Identical report structure. Edit fields below to omit sensitive remarks before exporting.'}
                                 </div>
 
-                                <PrintLetterhead docTitle="TECHNICAL & FAILURE ANALYSIS REPORT" refLabel="Engineering Report Ref" refValue={`${selectedRepair.id}-ER`} dateLabel="Date" dateValue={new Date().toLocaleDateString()} />
+                                <PrintLetterhead docTitle="TECHNICAL & FAILURE ANALYSIS REPORT" refLabel="Engineering Report Ref" refValue={`${selectedRepair.id}-ER`} dateLabel="Date" dateValue={formatDate(new Date())} />
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8 border border-slate-300 rounded-lg overflow-hidden bg-slate-50/50">
                                     <div className="p-4 border-r border-slate-300">
@@ -2914,17 +3086,17 @@
                                     <div className="space-y-6 text-sm">
                                         <div>
                                             <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest bg-slate-100 p-2 border-l-4 border-brand-800 mb-2">1. VISUAL INSPECTION & COMPONENT FAILURE ANALYSIS</h4>
-                                            <textarea rows="3" value={diag.visualInspection} onChange={e => setDiag({...diag, visualInspection: e.target.value})} readOnly={!canEditDiagnosticNow || isLockedByOther} className={`w-full border rounded p-3 text-sm font-medium ${canEditDiagnosticNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
+                                            <textarea rows="3" value={diag.visualInspection} onChange={e => setDiag({...diag, visualInspection: e.target.value})} readOnly={!canEditRepairReportNow || isLockedByOther} className={`w-full border rounded p-3 text-sm font-medium ${canEditRepairReportNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
                                         </div>
 
                                         <div>
                                             <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest bg-slate-100 p-2 border-l-4 border-brand-800 mb-2">2. ELECTRICAL & LOGIC SUB-SYSTEM DIAGNOSTIC FINDINGS</h4>
-                                            <textarea rows="3" value={diag.initialFindings} onChange={e => setDiag({...diag, initialFindings: e.target.value})} readOnly={!canEditDiagnosticNow || isLockedByOther} className={`w-full border rounded p-3 text-sm font-medium ${canEditDiagnosticNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
+                                            <textarea rows="3" value={diag.initialFindings} onChange={e => setDiag({...diag, initialFindings: e.target.value})} readOnly={!canEditRepairReportNow || isLockedByOther} className={`w-full border rounded p-3 text-sm font-medium ${canEditRepairReportNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
                                         </div>
 
                                         <div>
                                             <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest bg-slate-100 p-2 border-l-4 border-brand-800 mb-2">3. CORRECTIVE ENGINEERING ACTIONS TAKEN</h4>
-                                            <textarea rows="3" value={diag.correctiveAction || ''} onChange={e => setDiag({...diag, correctiveAction: e.target.value})} readOnly={!canEditDiagnosticNow || isLockedByOther} placeholder="Detail component replacements..." className={`w-full border rounded p-3 text-sm font-medium ${canEditDiagnosticNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
+                                            <textarea rows="3" value={diag.correctiveAction || ''} onChange={e => setDiag({...diag, correctiveAction: e.target.value})} readOnly={!canEditRepairReportNow || isLockedByOther} placeholder="Detail component replacements..." className={`w-full border rounded p-3 text-sm font-medium ${canEditRepairReportNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
                                         </div>
 
                                         <div className="pt-2">
@@ -2960,7 +3132,7 @@
                                         <div className="pt-2">
                                             <div className="flex justify-between items-center bg-slate-100 p-2 border-l-4 border-brand-800 mb-3">
                                                 <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest m-0">5. INSPECTION & REPAIR PHOTO DOCUMENTATION</h4>
-                                                {canEditDiagnosticNow && !isLockedByOther && (
+                                                {canEditRepairReportNow && !isLockedByOther && (
                                                     <label className="bg-brand-800 hover:bg-brand-900 text-white px-3 py-1 rounded text-[11px] font-bold transition cursor-pointer shadow-sm no-print flex items-center">
                                                         <i className="fa-solid fa-upload mr-1.5"></i> Upload from Device
                                                         <input type="file" accept="image/*" multiple onChange={(e) => {
@@ -2991,10 +3163,10 @@
                                                             </div>
                                                             <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-start gap-3">
                                                                 <div className="flex-1">
-                                                                    <input type="text" placeholder="Photo caption / description..." value={photo.caption} onChange={e => { const p = [...diag.photos]; p[idx].caption = e.target.value; setDiag({...diag, photos: p}); }} readOnly={!canEditDiagnosticNow || isLockedByOther} className="w-full border border-slate-300 rounded p-2 text-sm bg-white font-medium text-slate-800 focus:ring-2 focus:ring-brand-500 outline-none print:hidden shadow-sm" />
+                                                                    <input type="text" placeholder="Photo caption / description..." value={photo.caption} onChange={e => { const p = [...diag.photos]; p[idx].caption = e.target.value; setDiag({...diag, photos: p}); }} readOnly={!canEditRepairReportNow || isLockedByOther} className="w-full border border-slate-300 rounded p-2 text-sm bg-white font-medium text-slate-800 focus:ring-2 focus:ring-brand-500 outline-none print:hidden shadow-sm" />
                                                                     <div className="hidden print:block text-sm font-semibold text-slate-900 px-1 py-0.5">{photo.caption || 'Reference Image'}</div>
                                                                 </div>
-                                                                {canEditDiagnosticNow && !isLockedByOther && (
+                                                                {canEditRepairReportNow && !isLockedByOther && (
                                                                     <button type="button" onClick={() => { const p = diag.photos.filter((_, i) => i !== idx); setDiag({...diag, photos: p}); }} className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded transition no-print"><i className="fa-solid fa-trash-can"></i></button>
                                                                 )}
                                                             </div>
@@ -3007,7 +3179,7 @@
                                         <div className="pt-2 no-print">
                                             <div className="flex justify-between items-center bg-slate-100 p-2 border-l-4 border-brand-800 mb-3">
                                                 <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest m-0">TEST VIDEOS (INTERNAL RECORD ONLY)</h4>
-                                                {canEditDiagnosticNow && !isLockedByOther && (
+                                                {canEditRepairReportNow && !isLockedByOther && (
                                                     <label className="bg-brand-800 hover:bg-brand-900 text-white px-3 py-1 rounded text-[11px] font-bold transition cursor-pointer shadow-sm flex items-center">
                                                         <i className="fa-solid fa-upload mr-1.5"></i> Upload Video
                                                         <input type="file" accept="video/*" multiple onChange={(e) => {
@@ -3039,10 +3211,10 @@
                                                             <video controls className="w-full h-64 md:h-72 bg-black" src={video.url}></video>
                                                             <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-start gap-3">
                                                                 <div className="flex-1 min-w-0">
-                                                                    <input type="text" placeholder="Caption / description..." value={video.caption} onChange={e => { const v = [...diag.videos]; v[idx] = { ...v[idx], caption: e.target.value }; setDiag({...diag, videos: v}); }} readOnly={!canEditDiagnosticNow || isLockedByOther} className="w-full border border-slate-300 rounded p-2 text-sm bg-white font-medium text-slate-800 focus:ring-2 focus:ring-brand-500 outline-none shadow-sm" />
+                                                                    <input type="text" placeholder="Caption / description..." value={video.caption} onChange={e => { const v = [...diag.videos]; v[idx] = { ...v[idx], caption: e.target.value }; setDiag({...diag, videos: v}); }} readOnly={!canEditRepairReportNow || isLockedByOther} className="w-full border border-slate-300 rounded p-2 text-sm bg-white font-medium text-slate-800 focus:ring-2 focus:ring-brand-500 outline-none shadow-sm" />
                                                                     <span className="text-[10px] text-slate-500">{video.size}</span>
                                                                 </div>
-                                                                {canEditDiagnosticNow && !isLockedByOther && (
+                                                                {canEditRepairReportNow && !isLockedByOther && (
                                                                     <button type="button" onClick={() => { const v = diag.videos.filter((_, i) => i !== idx); setDiag({...diag, videos: v}); }} className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded transition"><i className="fa-solid fa-trash-can"></i></button>
                                                                 )}
                                                             </div>
@@ -3054,7 +3226,7 @@
 
                                         <div>
                                             <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest bg-slate-100 p-2 border-l-4 border-brand-800 mb-2">6. BENCH STRESS TESTING & QUALITY CALIBRATION RESULTS</h4>
-                                            <textarea rows="3" value={diag.testResults || ''} onChange={e => setDiag({...diag, testResults: e.target.value})} readOnly={!canEditDiagnosticNow || isLockedByOther} placeholder="Detail thermal test outcomes..." className={`w-full border rounded p-3 text-sm font-medium ${canEditDiagnosticNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
+                                            <textarea rows="3" value={diag.testResults || ''} onChange={e => setDiag({...diag, testResults: e.target.value})} readOnly={!canEditRepairReportNow || isLockedByOther} placeholder="Detail thermal test outcomes..." className={`w-full border rounded p-3 text-sm font-medium ${canEditRepairReportNow && !isLockedByOther ? 'border-slate-300 focus:ring-2 focus:ring-brand-500 outline-none' : 'bg-slate-50 border-slate-200 text-slate-700'}`}></textarea>
                                         </div>
                                     </div>
                                 ) : (
@@ -3184,28 +3356,16 @@
                                     </div>
                                 )}
 
-                                <div className="print-only hidden mt-16 pt-8 border-t-2 border-slate-900">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-12 text-sm">
-                                        <div>
-                                            <p className="font-bold text-slate-900 mb-12 uppercase tracking-wider text-xs">Certified & Tested By:</p>
-                                            <div className="border-b border-slate-900 mb-2"></div>
-                                            <p className="font-black text-slate-900 text-base">{currentUserName}</p>
-                                            <p className="text-xs font-bold text-slate-700 mt-1">MBOT Qualified Technician</p>
-                                            <p className="text-xs text-slate-600 mt-0.5">Turbo Control Solutions Sdn Bhd</p>
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-slate-900 mb-12 uppercase tracking-wider text-xs">Client Acceptance Sign-Off:</p>
-                                            <div className="border-b border-slate-900 mb-2"></div>
-                                            <p className="font-bold text-slate-900 text-base">Authorized Representative</p>
-                                            <p className="text-xs text-slate-700 mt-1">{selectedRepair.customerCompany}</p>
-                                            <p className="text-xs text-slate-500 mt-0.5">Date: ________________________</p>
-                                        </div>
+                                <div className="print-only hidden mt-10 pt-5 border-t border-slate-900 break-inside-avoid">
+                                    <div className="grid grid-cols-2 gap-12">
+                                        <SignatureBlock heading="Certified & Tested By" profile={currentUserProfile} fallbackName={currentUserName} subtitle={COMPANY_INFO.name} />
+                                        <SignatureBlock heading="Client Acceptance Sign-Off" fallbackName="Authorized Representative" subtitle={selectedRepair.customerCompany} showDateLine />
                                     </div>
                                 </div>
 
                                 <PrintFooter terms="This repair is warranted for 90 days from the date of delivery against defects in workmanship, covering only the components listed in Section 4 (Bill of Materials) above. This warranty excludes damage caused by improper installation, power surges, water ingress, or unauthorized modification after handover." />
 
-                                {canEditDiagnosticNow && (
+                                {canEditRepairReportNow && (
                                     <div className="no-print pt-6 border-t border-slate-200">
                                         <button disabled={isLockedByOther} onClick={handleSaveDiag} className="bg-brand-800 hover:bg-brand-900 text-white px-8 py-3 rounded shadow-md text-sm font-bold transition flex items-center disabled:opacity-40 disabled:cursor-not-allowed">
                                             <i className="fa-solid fa-floppy-disk mr-2"></i> Save Engineering Reports
@@ -3223,8 +3383,15 @@
                                     <button disabled={isLockedByOther} onClick={() => { if (guardLock()) return; let u = {...selectedRepair, ...editData}; u = appendAuditEntry(u, { type: 'edit', status: 'Execution Notes Updated', by: userRole, byName: currentUserName, detail: 'Final execution summary notes saved' }); setRepairs(repairs.map(r => r.id===u.id ? u:r)); setSelectedRepair(u); showToast('Execution notes saved.'); }} className="mt-6 bg-brand-800 text-white px-6 py-3 rounded text-sm font-bold shadow-md hover:bg-brand-900 transition w-full disabled:opacity-40 disabled:cursor-not-allowed">Save Execution Summary</button>
                                 </div>
                                 <div className="bg-slate-50 p-8 rounded-xl shadow-sm border border-slate-200">
-                                    <h3 className="text-xs font-black text-brand-800 uppercase tracking-widest mb-2 border-b border-slate-200 pb-2"><i className="fa-solid fa-boxes-stacked mr-2"></i> Allocate Parts & Deduct Stock</h3>
-                                    <p className="text-xs font-medium text-slate-500 mb-6">Select components to attach to this job's Bill of Materials and deduct from inventory. Component location is shown to help you find the part quickly.</p>
+                                    <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-2 mb-2">
+                                        <h3 className="text-xs font-black text-brand-800 uppercase tracking-widest"><i className="fa-solid fa-boxes-stacked mr-2"></i> Allocate Parts & Deduct Stock</h3>
+                                        {perms.canRequestParts && (
+                                            <button disabled={isLockedByOther} onClick={() => setShowPartRequestModal(true)} className="text-xs font-bold text-amber-700 hover:underline whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed">
+                                                <i className="fa-solid fa-cart-shopping mr-1"></i> Request / Restock Part
+                                            </button>
+                                        )}
+                                    </div>
+                                    <p className="text-xs font-medium text-slate-500 mb-6">Select components to attach to this job's Bill of Materials and deduct from inventory. Component location is shown to help you find the part quickly. Out of stock or need more? Use "Request / Restock Part" above — it's tagged to this job automatically.</p>
                                     <div className="space-y-4 mb-6">
                                         {pendingParts.map((item, index) => (
                                             <div key={index} className="flex gap-3 items-center bg-white p-2 border border-slate-200 rounded shadow-sm">
@@ -3324,7 +3491,7 @@
                                 </div>
 
                                 <div className="print-section bg-white p-12 rounded-xl border border-slate-200 shadow-sm max-w-3xl">
-                                    <PrintLetterhead docTitle="DELIVERY / PACKING SLIP" refLabel="Packing Slip Ref" refValue={selectedRepair.id} dateLabel="Date" dateValue={new Date().toLocaleDateString()} />
+                                    <PrintLetterhead docTitle="DELIVERY / PACKING SLIP" refLabel="Packing Slip Ref" refValue={selectedRepair.id} dateLabel="Date" dateValue={formatDate(new Date())} />
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm">
                                         <div className="min-w-0">
                                             <div className="text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Ship To</div>
@@ -3337,7 +3504,7 @@
                                             <div className="text-slate-700 break-words">Job ID: <strong>{selectedRepair.id}</strong></div>
                                             <div className="text-slate-700">Courier: <strong>{deliveryInfo.courier || '—'}</strong></div>
                                             <div className="text-slate-700">Tracking No.: <strong>{deliveryInfo.trackingNumber || '—'}</strong></div>
-                                            <div className="text-slate-700">Shipped Date: <strong>{deliveryInfo.shippedDate || '—'}</strong></div>
+                                            <div className="text-slate-700">Shipped Date: <strong>{formatDate(deliveryInfo.shippedDate)}</strong></div>
                                         </div>
                                         <div className="col-span-2 pt-4 border-t border-slate-200">
                                             <div className="text-[10px] uppercase font-black tracking-wider text-slate-500 mb-1">Item</div>
@@ -3457,7 +3624,7 @@
                                                             <span className="font-bold text-red-600">{log["Action"] || "Out"} ({log["Quantity"] || log["Qty"] || 1})</span>
                                                             <div className="text-[10px] text-slate-500">Job: {log["Job ID"] || "N/A"} • By: {log["Engineer Name"] || "Haziq"}</div>
                                                         </div>
-                                                        <span className="text-[10px] text-slate-400">{log["Timestamp"] ? new Date(log["Timestamp"]).toLocaleDateString() : ""}</span>
+                                                        <span className="text-[10px] text-slate-400">{log["Timestamp"] ? formatDate(log["Timestamp"]) : ""}</span>
                                                     </div>
                                                 ))}
                                             </div>
@@ -4087,16 +4254,16 @@
         // Reply/Reply All/Forward bodies.
         const quoteForReply = (msg) => {
             const who = msg.direction === 'out' ? msg.to : msg.from;
-            const when = msg.date ? new Date(msg.date).toLocaleString() : '';
+            const when = msg.date ? formatDateTime(msg.date) : '';
             const lines = (msg.bodyText || msg.snippet || '').split('\n').map(l => `> ${l}`).join('\n');
             return `\n\nOn ${when}, ${who} wrote:\n${lines}`;
         };
         const quoteForForward = (msg) => {
-            const when = msg.date ? new Date(msg.date).toLocaleString() : '';
+            const when = msg.date ? formatDateTime(msg.date) : '';
             return `\n\n---------- Forwarded message ----------\nFrom: ${msg.from || msg.to}\nDate: ${when}\nSubject: ${msg.subject}\nTo: ${msg.to}\n\n${msg.bodyText || msg.snippet || ''}`;
         };
 
-        const EmailPage = ({ account, emails, setEmails, currentUserEmail, currentUserId, navigateTo }) => {
+        const EmailPage = ({ account, emails, setEmails, currentUserEmail, currentUserId, navigateTo, syncError }) => {
             const [selectedId, setSelectedId] = useState(null);
             const [composeOpen, setComposeOpen] = useState(false);
             const [showCc, setShowCc] = useState(false);
@@ -4211,8 +4378,11 @@
                         <div>
                             <h2 className="text-xl font-black text-slate-800"><i className="fa-solid fa-envelope mr-2 text-brand-700"></i>{account.email}</h2>
                             <p className="text-xs text-slate-500 mt-0.5">
-                                {account.last_synced_at ? `Last synced ${new Date(account.last_synced_at).toLocaleString()}` : 'Not synced yet — checking for mail…'}
+                                {account.last_synced_at ? `Last synced ${formatDateTime(account.last_synced_at)}` : 'Not synced yet — checking for mail…'}
                             </p>
+                            {syncError && (
+                                <p className="text-xs font-bold text-red-600 mt-1"><i className="fa-solid fa-triangle-exclamation mr-1"></i>Sync error: {syncError}</p>
+                            )}
                         </div>
                         <button onClick={() => startCompose()} className="bg-brand-800 hover:bg-brand-900 text-white px-4 py-2 rounded font-bold text-sm shadow-md"><i className="fa-solid fa-pen mr-1.5"></i>Compose</button>
                     </div>
@@ -4229,7 +4399,7 @@
                                         {!msg.isRead && msg.direction === 'in' && <span className="w-2 h-2 rounded-full bg-brand-600 shrink-0"></span>}
                                     </div>
                                     <p className={`text-xs truncate mt-0.5 ${!msg.isRead && msg.direction === 'in' ? 'font-bold text-slate-800' : 'text-slate-500'}`}>{msg.subject}</p>
-                                    <p className="text-[11px] text-slate-400 mt-1">{msg.date ? new Date(msg.date).toLocaleString() : ''}{msg.attachments?.length ? <i className="fa-solid fa-paperclip ml-1.5"></i> : null}</p>
+                                    <p className="text-[11px] text-slate-400 mt-1">{msg.date ? formatDateTime(msg.date) : ''}{msg.attachments?.length ? <i className="fa-solid fa-paperclip ml-1.5"></i> : null}</p>
                                 </button>
                             ))}
                         </div>
@@ -4243,7 +4413,7 @@
                                             <h3 className="text-lg font-black text-slate-800">{selected.subject}</h3>
                                             <p className="text-xs text-slate-500 mt-1">
                                                 {selected.direction === 'out' ? `To: ${selected.to}` : `From: ${selected.from}`}
-                                                {selected.cc ? ` · Cc: ${selected.cc}` : ''} · {selected.date ? new Date(selected.date).toLocaleString() : ''}
+                                                {selected.cc ? ` · Cc: ${selected.cc}` : ''} · {selected.date ? formatDateTime(selected.date) : ''}
                                             </p>
                                         </div>
                                         <div className="flex gap-1.5 shrink-0">
@@ -4328,10 +4498,11 @@
 
         const ProfilePage = ({ profile, setProfile, session, emailAccount, setEmailAccount, navigateTo }) => {
             const [name, setName] = useState(profile?.name || '');
+            const [designation, setDesignation] = useState(profile?.designation || '');
             const [savingName, setSavingName] = useState(false);
             const [nameSaved, setNameSaved] = useState(false);
-            const [uploadingAvatar, setUploadingAvatar] = useState(false);
-            const [avatarError, setAvatarError] = useState('');
+            const [uploading, setUploading] = useState('');
+            const [uploadError, setUploadError] = useState('');
             const [newPassword, setNewPassword] = useState('');
             const [confirmPassword, setConfirmPassword] = useState('');
             const [savingPassword, setSavingPassword] = useState(false);
@@ -4341,35 +4512,52 @@
                 e.preventDefault();
                 setSavingName(true);
                 setNameSaved(false);
-                const { error } = await supabase.from('profiles').update({ name }).eq('id', profile.id);
-                if (!error) { setProfile(prev => ({ ...prev, name })); setNameSaved(true); }
+                const { error } = await supabase.from('profiles').update({ name, designation }).eq('id', profile.id);
+                if (!error) { setProfile(prev => ({ ...prev, name, designation })); setNameSaved(true); }
                 else alert(error.message);
                 setSavingName(false);
             };
 
-            const handleAvatarPick = async (e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (!file) return;
-                setAvatarError('');
-                setUploadingAvatar(true);
+            // Shared by the profile photo and the scanned signature — both are images
+            // stored under this user's own folder in the avatars bucket, with the public
+            // URL cache-busted so a replacement shows immediately rather than the browser
+            // reusing what it cached for the same URL.
+            const uploadProfileImage = async (file, kind, column) => {
+                setUploadError('');
+                setUploading(kind);
                 try {
-                    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-                    const path = `${profile.id}/avatar.${ext}`;
+                    const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+                    const path = `${profile.id}/${kind}.${ext}`;
                     const { error: uploadErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
                     if (uploadErr) throw uploadErr;
                     const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-                    // Cache-bust so the new photo shows immediately instead of the browser
-                    // reusing whatever it had cached for this same URL.
-                    const avatarUrl = `${data.publicUrl}?v=${Date.now()}`;
-                    const { error: updateErr } = await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', profile.id);
+                    const url = `${data.publicUrl}?v=${Date.now()}`;
+                    const { error: updateErr } = await supabase.from('profiles').update({ [column]: url }).eq('id', profile.id);
                     if (updateErr) throw updateErr;
-                    setProfile(prev => ({ ...prev, avatar_url: avatarUrl }));
+                    setProfile(prev => ({ ...prev, [column]: url }));
                 } catch (err) {
-                    setAvatarError(err.message);
+                    setUploadError(err.message);
                 } finally {
-                    setUploadingAvatar(false);
+                    setUploading('');
                 }
+            };
+
+            const handleAvatarPick = (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) uploadProfileImage(file, 'avatar', 'avatar_url');
+            };
+
+            const handleSignaturePick = (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) uploadProfileImage(file, 'signature', 'signature_url');
+            };
+
+            const handleRemoveSignature = async () => {
+                const { error } = await supabase.from('profiles').update({ signature_url: null }).eq('id', profile.id);
+                if (error) { setUploadError(error.message); return; }
+                setProfile(prev => ({ ...prev, signature_url: null }));
             };
 
             const handleChangePassword = async (e) => {
@@ -4395,10 +4583,9 @@
                                 : <div className="w-16 h-16 rounded-full bg-brand-700 text-white text-xl font-black flex items-center justify-center">{(name || '?').charAt(0).toUpperCase()}</div>}
                             <div>
                                 <label className="inline-block cursor-pointer text-xs font-bold text-brand-700 hover:underline">
-                                    {uploadingAvatar ? 'Uploading…' : 'Change photo'}
-                                    <input type="file" accept="image/*" onChange={handleAvatarPick} disabled={uploadingAvatar} className="hidden" />
+                                    {uploading === 'avatar' ? 'Uploading…' : 'Change photo'}
+                                    <input type="file" accept="image/*" onChange={handleAvatarPick} disabled={!!uploading} className="hidden" />
                                 </label>
-                                {avatarError && <p className="text-xs text-red-600 mt-1">{avatarError}</p>}
                             </div>
                         </div>
                         <form onSubmit={handleSaveName} className="space-y-3">
@@ -4407,14 +4594,35 @@
                                 <input required value={name} onChange={e => { setName(e.target.value); setNameSaved(false); }} className="w-full border border-slate-300 rounded p-2.5 text-sm" />
                             </div>
                             <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Designation</label>
+                                <input value={designation} onChange={e => { setDesignation(e.target.value); setNameSaved(false); }} placeholder="e.g. MBOT Qualified Technician" className="w-full border border-slate-300 rounded p-2.5 text-sm" />
+                                <p className="text-[11px] text-slate-400 mt-1">Printed under your name on reports you sign off.</p>
+                            </div>
+                            <div>
                                 <label className="block text-xs font-bold text-slate-700 mb-1">Email (login)</label>
                                 <input disabled value={session?.user?.email || ''} className="w-full border border-slate-200 bg-slate-50 text-slate-500 rounded p-2.5 text-sm" />
                             </div>
                             <div className="flex items-center gap-3">
-                                <button disabled={savingName} type="submit" className="bg-brand-800 hover:bg-brand-900 text-white px-5 py-2 rounded font-bold text-sm shadow-md disabled:opacity-60">{savingName ? 'Saving…' : 'Save Name'}</button>
+                                <button disabled={savingName} type="submit" className="bg-brand-800 hover:bg-brand-900 text-white px-5 py-2 rounded font-bold text-sm shadow-md disabled:opacity-60">{savingName ? 'Saving…' : 'Save Details'}</button>
                                 {nameSaved && <span className="text-xs font-bold text-emerald-700"><i className="fa-solid fa-check mr-1"></i>Saved</span>}
                             </div>
                         </form>
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <h2 className="text-lg font-black text-slate-800 mb-1">Signature</h2>
+                        <p className="text-sm text-slate-500 mb-4">Upload a scan or photo of your signature (PNG with a transparent background works best). It's printed above your name on reports you sign off — leave it empty to print a blank signature line instead.</p>
+                        {profile?.signature_url && (
+                            <div className="border border-slate-200 rounded-lg p-4 bg-slate-50 mb-3 flex items-center justify-between gap-4">
+                                <img src={profile.signature_url} alt="Your signature" className="h-16 object-contain" />
+                                <button onClick={handleRemoveSignature} className="text-xs font-bold text-red-600 hover:underline shrink-0">Remove</button>
+                            </div>
+                        )}
+                        <label className="inline-block cursor-pointer bg-brand-800 hover:bg-brand-900 text-white px-5 py-2 rounded font-bold text-sm shadow-md">
+                            {uploading === 'signature' ? 'Uploading…' : (profile?.signature_url ? 'Replace Signature' : 'Upload Signature')}
+                            <input type="file" accept="image/*" onChange={handleSignaturePick} disabled={!!uploading} className="hidden" />
+                        </label>
+                        {uploadError && <p className="text-xs font-bold text-red-600 mt-2">{uploadError}</p>}
                     </div>
 
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -4499,6 +4707,7 @@
             // on email_accounts/emails in supabase/schema.sql.
             const [emailAccount, setEmailAccount] = useState(null);
             const [emails, setEmailsState] = useState([]);
+            const [emailSyncError, setEmailSyncError] = useState('');
             const unreadEmailCount = useMemo(() => emails.filter(e => e.direction === 'in' && !e.isRead).length, [emails]);
             const partRequests = useMemo(
                 () => [...purchaseRequests, ...legacyPartRequests.filter(l => !purchaseRequests.some(p => p.id === l.id))],
@@ -4603,11 +4812,20 @@
                 const syncEmail = async () => {
                     try {
                         const { data: { session: liveSession } } = await supabase.auth.getSession();
-                        await fetch(EMAIL_SYNC_ENDPOINT, {
+                        const res = await fetch(EMAIL_SYNC_ENDPOINT, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${liveSession?.access_token || ''}` },
                         });
-                    } catch (e) { console.error('Email sync failed:', e); }
+                        // fetch() only rejects on a network failure, never on the server
+                        // returning an error status — an IMAP auth/timeout/connection failure
+                        // came back as a normal response and was silently doing nothing here.
+                        const body = await res.json().catch(() => ({}));
+                        if (!res.ok) throw new Error(body.error || `Sync failed (${res.status})`);
+                        setEmailSyncError('');
+                    } catch (e) {
+                        console.error('Email sync failed:', e);
+                        setEmailSyncError(e.message || 'Sync failed');
+                    }
                 };
                 syncEmail();
                 const interval = setInterval(syncEmail, EMAIL_SYNC_INTERVAL_MS);
@@ -4905,10 +5123,11 @@
                     if (item.kind === 'new-stock') {
                         const newId = generateNextPartId();
                         const name = (item.type || '') + (item.brand ? ' ' + item.brand : '');
-                        setStock(prev => [...prev, { id: newId, type: item.type, brand: item.brand, partNumber: item.partNumber, packageType: item.packageType, size: item.size, description: item.description, location: item.location, initialStock: 0, qrCode: '', photo: '', name, qty: 0 }]);
+                        const initialStock = Number(item.qty) || 0;
+                        setStock(prev => [...prev, { id: newId, type: item.type, brand: item.brand, partNumber: item.partNumber, packageType: item.packageType, size: item.size, description: item.description, location: item.location, initialStock, qrCode: '', photo: '', name, qty: initialStock }]);
                         fetch(GOOGLE_SHEET_API, {
                             method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'createPart', id: newId, type: item.type, brand: item.brand, partNumber: item.partNumber, packageType: item.packageType, size: item.size, description: item.description, location: item.location })
+                            body: JSON.stringify({ action: 'createPart', id: newId, type: item.type, brand: item.brand, partNumber: item.partNumber, packageType: item.packageType, size: item.size, description: item.description, location: item.location, initialStock })
                         }).catch(err => console.error('createPart failed', err));
                         return { ...common, partId: newId, partNo: item.partNumber || '', partName: name || item.partNumber };
                     }
@@ -5108,6 +5327,8 @@
                                     perms={perms}
                                     userRole={userRole}
                                     currentUserName={currentUserName}
+                                    currentUserProfile={profile}
+                                    users={users}
                                     stock={stock}
                                     setStock={setStock}
                                     navigateTo={navigateTo}
@@ -5128,7 +5349,7 @@
                             {activeTab === 'inventory' && <Inventory stock={stock} loadData={loadData} selectedItemDetail={selectedItemDetail} setSelectedItemDetail={setSelectedItemDetail} transactions={transactions} stockError={stockError} perms={perms} onCreateRequest={handleCreatePartRequest} />}
                             {activeTab === 'part-requests' && (perms.canRequestParts || perms.canManagePurchaseOrders) && <PartRequests partRequests={partRequests} stock={stock} repairs={repairs} perms={perms} currentUserName={currentUserName} onCreateRequest={handleCreatePartRequest} onUpdateStatus={handleUpdatePartRequestStatus} />}
                             {activeTab === 'profile' && <ProfilePage profile={profile} setProfile={setProfile} session={session} emailAccount={emailAccount} setEmailAccount={setEmailAccount} navigateTo={navigateTo} />}
-                            {activeTab === 'email' && emailAccount && <EmailPage account={emailAccount} emails={emails} setEmails={setEmails} currentUserEmail={session?.user?.email || ''} currentUserId={session?.user?.id} navigateTo={navigateTo} />}
+                            {activeTab === 'email' && emailAccount && <EmailPage account={emailAccount} emails={emails} setEmails={setEmails} currentUserEmail={session?.user?.email || ''} currentUserId={session?.user?.id} navigateTo={navigateTo} syncError={emailSyncError} />}
                             {activeTab === 'users' && perms.canManageUsers && <UserManagement users={users} setUsers={setUsers} currentUserName={currentUserName} />}
                             {activeTab === 'activity' && perms.canManageUsers && <ActivityLog repairs={repairs} />}
                         </div>
